@@ -6196,18 +6196,15 @@ end)()
 
 
 
-
-local REQUIRE_BaseCharacterController = (function()
-	--[[
-	BaseCharacterController - Abstract base class for character controllers, not intended to be
-	directly instantiated.
-
-	2018 PlayerScripts Update - AllYourBlox
---]]
-	
-	--[[ The Module ]]--
-	local BaseCharacterController = {}
+local BaseCharacterController = {} do
 	BaseCharacterController.__index = BaseCharacterController
+	
+	--[[
+		BaseCharacterController - Abstract base class for character controllers, not intended to be
+		directly instantiated.
+
+		2018 PlayerScripts Update - AllYourBlox
+	--]]
 	
 	function BaseCharacterController.new()
 		local self = setmetatable({}, BaseCharacterController)
@@ -6241,9 +6238,7 @@ local REQUIRE_BaseCharacterController = (function()
 		return false
 	end
 	
-	return BaseCharacterController
-	
-end)()
+end
 
 
 local REQUIRE_ClickToMoveDisplay = (function()
@@ -6735,7 +6730,7 @@ local REQUIRE_ClickToMoveDisplay = (function()
 end)()
 
 
-local Keyboard = setmetatable({}, REQUIRE_BaseCharacterController) do
+local Keyboard = setmetatable({}, BaseCharacterController) do
 	Keyboard.__index = Keyboard
 	
 	--[[
@@ -6745,7 +6740,7 @@ local Keyboard = setmetatable({}, REQUIRE_BaseCharacterController) do
 	--]]
 	
 	function Keyboard.new(CONTROL_ACTION_PRIORITY)
-		local self = setmetatable(REQUIRE_BaseCharacterController.new() :: any, Keyboard)
+		local self = setmetatable(BaseCharacterController.new() :: any, Keyboard)
 		
 		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
 		
@@ -8186,7 +8181,6 @@ local REQUIRE_DynamicThumbstick = (function()
 	end
 	
 	--[[ The Module ]]--
-	local BaseCharacterController = REQUIRE_BaseCharacterController
 	local DynamicThumbstick = setmetatable({}, BaseCharacterController)
 	DynamicThumbstick.__index = DynamicThumbstick
 	
@@ -8707,7 +8701,6 @@ local REQUIRE_Gamepad = (function()
 	local thumbstickDeadzone = 0.2
 	
 	--[[ The Module ]]--
-	local BaseCharacterController = REQUIRE_BaseCharacterController
 	local Gamepad = setmetatable({}, BaseCharacterController)
 	Gamepad.__index = Gamepad
 	
@@ -9058,7 +9051,6 @@ local REQUIRE_TouchJump = (function()
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
 	
 	--[[ The Module ]]--
-	local BaseCharacterController = REQUIRE_BaseCharacterController
 	local TouchJump = setmetatable({}, BaseCharacterController)
 	TouchJump.__index = TouchJump
 	
@@ -9262,7 +9254,6 @@ local REQUIRE_TouchThumbstick = (function()
 	--[[ Constants ]]--
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
 	--[[ The Module ]]--
-	local BaseCharacterController = REQUIRE_BaseCharacterController
 	local TouchThumbstick = setmetatable({}, BaseCharacterController)
 	TouchThumbstick.__index = TouchThumbstick
 	function TouchThumbstick.new()
@@ -9482,7 +9473,6 @@ local REQUIRE_VRNavigation = (function()
 	movementUpdateEvent.Parent = script
 	
 	--[[ The Class ]]--
-	local BaseCharacterController = REQUIRE_BaseCharacterController
 	local VRNavigation = setmetatable({}, BaseCharacterController)
 	VRNavigation.__index = VRNavigation
 	
