@@ -1653,11 +1653,13 @@ local CameraToggleStateController do
 	
 end
 
-local REQUIRE_BaseCamera = (function()
---[[
-	BaseCamera - Abstract base class for camera control modules
-	2018 Camera Update - AllYourBlox
---]]
+local BaseCamera = {} do
+	BaseCamera.__index = BaseCamera
+	
+	--[[
+		BaseCamera - Abstract base class for camera control modules
+		2018 Camera Update - AllYourBlox
+	--]]
 	
 	--[[ Local Constants ]]--
 	local UNIT_Z = Vector3.new(0,0,1)
@@ -1700,10 +1702,6 @@ local REQUIRE_BaseCamera = (function()
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	local player = Players.LocalPlayer
-	
-	--[[ The Module ]]--
-	local BaseCamera = {}
-	BaseCamera.__index = BaseCamera
 	
 	function BaseCamera.new()
 		local self = setmetatable({}, BaseCamera)
@@ -2460,19 +2458,17 @@ local REQUIRE_BaseCamera = (function()
 		return 0
 	end
 	
-	return BaseCamera
-	
-end)()
+end
 
-local REQUIRE_BaseOcclusion = (function()
+local BaseOcclusion: any = {} do
+	BaseOcclusion.__index = BaseOcclusion
+	
 	--[[
-	BaseOcclusion - Abstract base class for character occlusion control modules
-	2018 Camera Update - AllYourBlox
---]]
+		BaseOcclusion - Abstract base class for character occlusion control modules
+		2018 Camera Update - AllYourBlox
+	--]]
 	
 	--[[ The Module ]]--
-	local BaseOcclusion: any = {}
-	BaseOcclusion.__index = BaseOcclusion
 	setmetatable(BaseOcclusion, {
 		__call = function(_, ...)
 			return BaseOcclusion.new(...)
@@ -2511,19 +2507,19 @@ local REQUIRE_BaseOcclusion = (function()
 		return desiredCameraCFrame, desiredCameraFocus
 	end
 	
-	return BaseOcclusion
+end
+
+
+local ClassicCamera = setmetatable({}, BaseCamera) do
+	ClassicCamera.__index = ClassicCamera
 	
-end)()
+	--[[
+		ClassicCamera - Classic Roblox camera control module
+		2018 Camera Update - AllYourBlox
 
-
-local REQUIRE_ClassicCamera = (function()
---[[
-	ClassicCamera - Classic Roblox camera control module
-	2018 Camera Update - AllYourBlox
-
-	Note: This module also handles camera control types Follow and Track, the
-	latter of which is currently not distinguished from Classic
---]]
+		Note: This module also handles camera control types Follow and Track, the
+		latter of which is currently not distinguished from Classic
+	--]]
 	
 	-- Local private variables and constants
 	local tweenAcceleration = math.rad(220) -- Radians/Second^2
@@ -2540,11 +2536,6 @@ local REQUIRE_ClassicCamera = (function()
 	local VRService = game:GetService("VRService")
 	
 	local Util = CameraUtils
-	
-	--[[ The Module ]]--
-	local BaseCamera = REQUIRE_BaseCamera
-	local ClassicCamera = setmetatable({}, BaseCamera)
-	ClassicCamera.__index = ClassicCamera
 	
 	function ClassicCamera.new()
 		local self = setmetatable(BaseCamera.new(), ClassicCamera)
@@ -2766,9 +2757,7 @@ local REQUIRE_ClassicCamera = (function()
 		self:UpdateMouseBehavior()
 	end
 	
-	return ClassicCamera
-	
-end)()
+end
 
 local REQUIRE_Invisicam = (function()
 --[[
@@ -2876,7 +2865,6 @@ local REQUIRE_Invisicam = (function()
 	
 	
 	--[[ The Module ]]--
-	local BaseOcclusion = REQUIRE_BaseOcclusion
 	local Invisicam = setmetatable({}, BaseOcclusion)
 	Invisicam.__index = Invisicam
 	
@@ -3339,7 +3327,6 @@ local REQUIRE_LegacyCamera = (function()
 	local PlayersService = game:GetService('Players')
 	
 	--[[ The Module ]]--
-	local BaseCamera = REQUIRE_BaseCamera
 	local LegacyCamera = setmetatable({}, BaseCamera)
 	LegacyCamera.__index = LegacyCamera
 	
@@ -3690,7 +3677,6 @@ local REQUIRE_OrbitalCamera = (function()
 	local VRService = game:GetService("VRService")
 	
 	--[[ The Module ]]--
-	local BaseCamera = REQUIRE_BaseCamera
 	local OrbitalCamera = setmetatable({}, BaseCamera)
 	OrbitalCamera.__index = OrbitalCamera
 	
@@ -4030,7 +4016,6 @@ local REQUIRE_Poppercam = (function()
 	end
 	
 	--[[ The Module ]]--
-	local BaseOcclusion = REQUIRE_BaseOcclusion
 	local Poppercam = setmetatable({}, BaseOcclusion)
 	Poppercam.__index = Poppercam
 	
@@ -4285,7 +4270,6 @@ local REQUIRE_VRBaseCamera = (function()
 	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
 	
 	--[[ The Module ]]--
-	local BaseCamera = REQUIRE_BaseCamera
 	local VRBaseCamera = setmetatable({}, BaseCamera)
 	VRBaseCamera.__index = VRBaseCamera
 	
@@ -5147,7 +5131,6 @@ local REQUIRE_VehicleCamera = (function()
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	
-	local BaseCamera = REQUIRE_BaseCamera
 	local CameraUtils = CameraUtils
 	local VehicleCameraCore = REQUIRE_VehicleCameraCore
 	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
@@ -5632,7 +5615,6 @@ local CameraModule = {} do
 	local CameraUtils = CameraUtils
 
 	-- Load Roblox Camera Controller Modules
-	local ClassicCamera = REQUIRE_ClassicCamera
 	local OrbitalCamera = REQUIRE_OrbitalCamera
 	local LegacyCamera = REQUIRE_LegacyCamera
 	local VehicleCamera = REQUIRE_VehicleCamera
