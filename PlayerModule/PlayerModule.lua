@@ -2470,13 +2470,6 @@ local BaseOcclusion: any = {} do
 		2018 Camera Update - AllYourBlox
 	--]]
 	
-	--[[ The Module ]]--
-	setmetatable(BaseOcclusion, {
-		__call = function(_, ...)
-			return BaseOcclusion.new(...)
-		end
-	})
-	
 	function BaseOcclusion.new()
 		local self = setmetatable({}, BaseOcclusion)
 		return self
