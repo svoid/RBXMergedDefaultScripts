@@ -658,7 +658,7 @@ local Popper do
 	
 end
 
-local Zoom = {} do
+local ZoomController = {} do
 	-- Zoom
 	-- Controls the distance between the focus and the camera.
 	
@@ -753,7 +753,7 @@ local Zoom = {} do
 	
 	local zoomDelta = 0
 	
-	function Zoom.Update(renderDt: number, focus: CFrame, extrapolation)
+	function ZoomController.Update(renderDt: number, focus: CFrame, extrapolation)
 		local poppedZoom = math.huge
 		
 		if zoomSpring.goal > DIST_OPAQUE then
@@ -777,16 +777,16 @@ local Zoom = {} do
 		return zoomSpring:Step(renderDt)
 	end
 	
-	function Zoom.GetZoomRadius()
+	function ZoomController.GetZoomRadius()
 		return zoomSpring.x
 	end
 	
-	function Zoom.SetZoomParameters(targetZoom, newZoomDelta)
+	function ZoomController.SetZoomParameters(targetZoom, newZoomDelta)
 		zoomSpring.goal = targetZoom
 		zoomDelta = newZoomDelta
 	end
 	
-	function Zoom.ReleaseSpring()
+	function ZoomController.ReleaseSpring()
 		zoomSpring.x = zoomSpring.goal
 		zoomSpring.v = 0
 	end
@@ -1696,7 +1696,6 @@ local REQUIRE_BaseCamera = (function()
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
 	local FIRST_PERSON_DISTANCE_MIN = 0.5
 	
-	local ZoomController = Zoom
 	local CameraToggleStateController = REQUIRE_CameraToggleStateController
 	local CameraInput = REQUIRE_CameraInput
 	local CameraUI = REQUIRE_CameraUI
@@ -3979,8 +3978,6 @@ local REQUIRE_Poppercam = (function()
 	Poppercam - Occlusion module that brings the camera closer to the subject when objects are blocking the view.
 --]]
 	
-	local ZoomController = Zoom
-	
 	local TransformExtrapolator = {} do
 		TransformExtrapolator.__index = TransformExtrapolator
 		
@@ -4288,7 +4285,6 @@ local REQUIRE_VRBaseCamera = (function()
 	local VRService = game:GetService("VRService")
 	
 	local CameraInput = REQUIRE_CameraInput
-	local ZoomController = Zoom
 	
 	local Players = game:GetService("Players")
 	local player = Players.LocalPlayer
@@ -5167,7 +5163,6 @@ local REQUIRE_VehicleCamera = (function()
 	local BaseCamera = REQUIRE_BaseCamera
 	local CameraInput = REQUIRE_CameraInput
 	local CameraUtils = CameraUtils
-	local ZoomController = Zoom
 	local VehicleCameraCore = REQUIRE_VehicleCameraCore
 	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
 	
@@ -5396,7 +5391,6 @@ local REQUIRE_VRVehicleCamera = (function()
 	local VRBaseCamera = REQUIRE_VRBaseCamera
 	local CameraInput = REQUIRE_CameraInput
 	local CameraUtils = CameraUtils
-	local ZoomController = Zoom
 	local VehicleCamera = REQUIRE_VehicleCamera
 	local VehicleCameraCore =  REQUIRE_VehicleCameraCore
 	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
