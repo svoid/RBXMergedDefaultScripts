@@ -2558,18 +2558,6 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	local SMART_CIRCLE_INCREMENT = 2.0 * math.pi / SMART_CIRCLE_CASTS
 	local CHAR_OUTLINE_CASTS = 24
 	
-	-- Used to sanitize user-supplied functions
-	local function AssertTypes(param, ...)
-		local allowedTypes = {}
-		local typeString = ''
-		for _, typeName in pairs({...}) do
-			allowedTypes[typeName] = true
-			typeString ..= (typeString == '' and '' or ' or ') .. typeName
-		end
-		local theType = type(param)
-		assert(allowedTypes[theType], typeString .. " type expected, got: " .. theType)
-	end
-	
 	-- Helper function for Determinant of 3x3, not in CameraUtils for performance reasons
 	local function Det3x3(a: number,b: number,c: number,d: number,e: number,f: number,g: number,h: number,i: number): number
 		return a * (e*i - f*h) - b * (d*i - f*g) + c * (d*h - e*g)
@@ -2904,7 +2892,10 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	end
 	
 	function Invisicam:SetMode(newMode: number)
-		AssertTypes(newMode, 'number')
+		local vtype = type(newMode)
+		if vtype ~= "number" then
+			error("number expected, got " .. vtype)
+		end
 		for _, modeNum in pairs(MODE) do
 			if modeNum == newMode then
 				self.mode = newMode
