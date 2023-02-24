@@ -2535,15 +2535,13 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 	local PlayersService = game:GetService("Players")
 	local VRService = game:GetService("VRService")
 	
-	local Util = CameraUtils
-	
 	function ClassicCamera.new()
 		local self = setmetatable(BaseCamera.new(), ClassicCamera)
 		
 		self.isFollowCamera = false
 		self.isCameraToggle = false
 		self.lastUpdate = tick()
-		self.cameraToggleSpring = Util.Spring.new(5, 0)
+		self.cameraToggleSpring = CameraUtils.Spring.new(5, 0)
 		
 		return self
 	end
@@ -2553,12 +2551,12 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 			local zoom = self.currentSubjectDistance
 			
 			if CameraInput.getTogglePan() then
-				self.cameraToggleSpring.goal = math.clamp(Util.map(zoom, 0.5, self.FIRST_PERSON_DISTANCE_THRESHOLD, 0, 1), 0, 1)
+				self.cameraToggleSpring.goal = math.clamp(CameraUtils.map(zoom, 0.5, self.FIRST_PERSON_DISTANCE_THRESHOLD, 0, 1), 0, 1)
 			else
 				self.cameraToggleSpring.goal = 0
 			end
 			
-			local distanceOffset: number = math.clamp(Util.map(zoom, 0.5, 64, 0, 1), 0, 1) + 1
+			local distanceOffset: number = math.clamp(CameraUtils.map(zoom, 0.5, 64, 0, 1), 0, 1) + 1
 			return Vector3.new(0, self.cameraToggleSpring:step(dt)*distanceOffset, 0)
 		end
 		
@@ -2632,7 +2630,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 				local cameraRelativeOffset: Vector3 = offset.X * newLookCFrame.RightVector + offset.Y * newLookCFrame.UpVector + offset.Z * newLookCFrame.LookVector
 				
 				--offset can be NAN, NAN, NAN if newLookVector has only y component
-				if Util.IsFiniteVector3(cameraRelativeOffset) then
+				if CameraUtils.IsFiniteVector3(cameraRelativeOffset) then
 					subjectPosition = subjectPosition + cameraRelativeOffset
 				end
 			else
@@ -2645,8 +2643,8 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 					if (isInVehicle or isOnASkateboard or (self.isFollowCamera and isClimbing)) and self.lastUpdate and humanoid and humanoid.Torso then
 						if isInFirstPerson then
 							if self.lastSubjectCFrame and (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
-								local y = -Util.GetAngleBetweenXZVectors(self.lastSubjectCFrame.lookVector, cameraSubject.CFrame.lookVector)
-								if Util.IsFinite(y) then
+								local y = -CameraUtils.GetAngleBetweenXZVectors(self.lastSubjectCFrame.lookVector, cameraSubject.CFrame.lookVector)
+								if CameraUtils.IsFinite(y) then
 									rotateInput = rotateInput + Vector2.new(y, 0)
 								end
 								tweenSpeed = 0
@@ -2660,8 +2658,8 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 								percent = 1
 							end
 							
-							local y = Util.GetAngleBetweenXZVectors(forwardVector, self:GetCameraLookVector())
-							if Util.IsFinite(y) and math.abs(y) > 0.0001 then
+							local y = CameraUtils.GetAngleBetweenXZVectors(forwardVector, self:GetCameraLookVector())
+							if CameraUtils.IsFinite(y) and math.abs(y) > 0.0001 then
 								rotateInput = rotateInput + Vector2.new(y * percent, 0)
 							end
 						end
@@ -2670,7 +2668,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 						-- Logic that was unique to the old FollowCamera module
 						local lastVec = -(self.lastCameraTransform.p - subjectPosition)
 						
-						local y = Util.GetAngleBetweenXZVectors(lastVec, self:GetCameraLookVector())
+						local y = CameraUtils.GetAngleBetweenXZVectors(lastVec, self:GetCameraLookVector())
 						
 						-- This cutoff is to decide if the humanoid's angle of movement,
 						-- relative to the camera's look vector, is enough that
@@ -2679,7 +2677,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 						local thetaCutoff = 0.4
 						
 						-- Check for NaNs
-						if Util.IsFinite(y) and math.abs(y) > 0.0001 and math.abs(y) > thetaCutoff * timeDelta then
+						if CameraUtils.IsFinite(y) and math.abs(y) > 0.0001 and math.abs(y) > thetaCutoff * timeDelta then
 							rotateInput = rotateInput + Vector2.new(y, 0)
 						end
 					end
@@ -3443,9 +3441,6 @@ local MouseLockController = {} do
 	local Settings = userSettings	-- ignore warning
 	local GameSettings = Settings.GameSettings
 	
-	--[[ Imports ]]
-	local CameraUtils = CameraUtils
-	
 	function MouseLockController.new()
 		local self = setmetatable({}, MouseLockController)
 		
@@ -3663,8 +3658,6 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 	externalProperties["CCWAzimuthTravel"] = 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
 	externalProperties["UseAzimuthLimits"] = false -- Full rotation around Y axis available by default
 	
-	local Util = CameraUtils
-	
 	--[[ Services ]]--
 	local PlayersService = game:GetService('Players')
 	local VRService = game:GetService("VRService")
@@ -3806,12 +3799,12 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		end
 		assert(humanoid.RootPart, "")
 		local newDesiredLook = (humanoid.RootPart.CFrame.LookVector - Vector3.new(0,0.23,0)).Unit
-		local horizontalShift = Util.GetAngleBetweenXZVectors(newDesiredLook, self:GetCameraLookVector())
+		local horizontalShift = CameraUtils.GetAngleBetweenXZVectors(newDesiredLook, self:GetCameraLookVector())
 		local vertShift = math.asin(self:GetCameraLookVector().Y) - math.asin(newDesiredLook.Y)
-		if not Util.IsFinite(horizontalShift) then
+		if not CameraUtils.IsFinite(horizontalShift) then
 			horizontalShift = 0
 		end
-		if not Util.IsFinite(vertShift) then
+		if not CameraUtils.IsFinite(vertShift) then
 			vertShift = 0
 		end
 	end
@@ -4054,8 +4047,6 @@ local TransparencyController = {} do
 	
 	local MAX_TWEEN_RATE = 2.8 -- per second
 	
-	local Util = CameraUtils
-	
 	function TransparencyController.new()
 		local self = setmetatable({}, TransparencyController)
 		
@@ -4208,7 +4199,7 @@ local TransparencyController = {} do
 				self.transparencyDirty = true
 			end
 			
-			transparency = math.clamp(Util.Round(transparency, 2), 0, 1)
+			transparency = math.clamp(CameraUtils.Round(transparency, 2), 0, 1)
 			
 			-- update transparencies 
 			if self.transparencyDirty or self.lastTransparency ~= transparency then
@@ -4586,9 +4577,6 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 	local CAMERA_BLACKOUT_TIME = 0.1
 	local FP_ZOOM = 0.5
 	
-	-- requires
-	local Util = CameraUtils
-	
 	local FFlagUserFlagEnableVRUpdate3 = getFastFlag("UserFlagEnableVRUpdate3")
 	
 	function VRCamera.new()
@@ -4902,7 +4890,6 @@ local VEHICLE_CAMERA_CONFIG = {
 
 
 local VehicleCameraCore do
-	local CameraUtils = CameraUtils
 	local VehicleCameraConfig = VEHICLE_CAMERA_CONFIG
 	
 	local map = CameraUtils.map
@@ -5096,9 +5083,6 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	
-	local CameraUtils = CameraUtils
-	local VehicleCameraConfig = VEHICLE_CAMERA_CONFIG
-	
 	local localPlayer = Players.LocalPlayer
 	
 	local map = CameraUtils.map
@@ -5130,7 +5114,7 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	
 	function VehicleCamera:Reset()
 		self.vehicleCameraCore = VehicleCameraCore.new(self:GetSubjectCFrame())
-		self.pitchSpring = Spring.new(0, -math.rad(VehicleCameraConfig.pitchBaseAngle))
+		self.pitchSpring = Spring.new(0, -math.rad(VEHICLE_CAMERA_CONFIG.pitchBaseAngle))
 		self.yawSpring = Spring.new(0, YAW_DEFAULT)
 		self.lastPanTick = 0
 		
@@ -5155,7 +5139,7 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	function VehicleCamera:_StepInitialZoom()
 		self:SetCameraToSubjectDistance(math.max(
 			ZoomController.GetZoomRadius(),
-			self.assemblyRadius*VehicleCameraConfig.initialZoomRadiusMul
+			self.assemblyRadius*VEHICLE_CAMERA_CONFIG.initialZoomRadiusMul
 			))
 	end
 	
@@ -5174,17 +5158,17 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 			self.lastPanTick = os.clock()
 		end
 		
-		local pitchBaseAngle = -math.rad(VehicleCameraConfig.pitchBaseAngle)
-		local pitchDeadzoneAngle = math.rad(VehicleCameraConfig.pitchDeadzoneAngle)
+		local pitchBaseAngle = -math.rad(VEHICLE_CAMERA_CONFIG.pitchBaseAngle)
+		local pitchDeadzoneAngle = math.rad(VEHICLE_CAMERA_CONFIG.pitchDeadzoneAngle)
 		
-		if os.clock() - self.lastPanTick > VehicleCameraConfig.autocorrectDelay then
+		if os.clock() - self.lastPanTick > VEHICLE_CAMERA_CONFIG.autocorrectDelay then
 			-- adjust autocorrect response based on forward velocity
 			local autocorrectResponse = mapClamp(
 				vdotz,
-				VehicleCameraConfig.autocorrectMinCarSpeed,
-				VehicleCameraConfig.autocorrectMaxCarSpeed,
+				VEHICLE_CAMERA_CONFIG.autocorrectMinCarSpeed,
+				VEHICLE_CAMERA_CONFIG.autocorrectMaxCarSpeed,
 				0,
-				VehicleCameraConfig.autocorrectResponse
+				VEHICLE_CAMERA_CONFIG.autocorrectResponse
 			)
 			
 			yawSpring.freq = autocorrectResponse
@@ -5223,7 +5207,7 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	end
 	
 	function VehicleCamera:_GetThirdPersonLocalOffset()
-		return self.assemblyOffset + Vector3.new(0, self.assemblyRadius*VehicleCameraConfig.verticalCenterOffset, 0)
+		return self.assemblyOffset + Vector3.new(0, self.assemblyRadius*VEHICLE_CAMERA_CONFIG.verticalCenterOffset, 0)
 	end
 	
 	function VehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
@@ -5318,8 +5302,6 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	local TP_FOLLOW_DIST = 200
 	local TP_FOLLOW_ANGLE_DOT = 0.56
 	
-	local CameraUtils = CameraUtils
-	local VehicleCameraConfig = VEHICLE_CAMERA_CONFIG
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local VRService = game:GetService("VRService")
@@ -5355,7 +5337,7 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	
 	function VRVehicleCamera:Reset()
 		self.vehicleCameraCore = VehicleCameraCore.new(self:GetSubjectCFrame())
-		self.pitchSpring = Spring.new(0, -math.rad(VehicleCameraConfig.pitchBaseAngle))
+		self.pitchSpring = Spring.new(0, -math.rad(VEHICLE_CAMERA_CONFIG.pitchBaseAngle))
 		self.yawSpring = Spring.new(0, YAW_DEFAULT)
 		
 		local camera = workspace.CurrentCamera
@@ -5381,12 +5363,12 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	function VRVehicleCamera:_StepInitialZoom()
 		self:SetCameraToSubjectDistance(math.max(
 			ZoomController.GetZoomRadius(),
-			self.assemblyRadius*VehicleCameraConfig.initialZoomRadiusMul
+			self.assemblyRadius*VEHICLE_CAMERA_CONFIG.initialZoomRadiusMul
 			))
 	end
 	
 	function VRVehicleCamera:_GetThirdPersonLocalOffset()
-		return self.assemblyOffset + Vector3.new(0, self.assemblyRadius*VehicleCameraConfig.verticalCenterOffset, 0)
+		return self.assemblyOffset + Vector3.new(0, self.assemblyRadius*VEHICLE_CAMERA_CONFIG.verticalCenterOffset, 0)
 	end
 	
 	function VRVehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
@@ -5564,9 +5546,6 @@ local CameraModule = {} do
 	local UserInputService = game:GetService("UserInputService")
 	local VRService = game:GetService("VRService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
-
-	-- Static camera utils
-	local CameraUtils = CameraUtils
 
 	-- Table of camera controllers that have been instantiated. They are instantiated as they are used.
 	local instantiatedCameraControllers = {}
