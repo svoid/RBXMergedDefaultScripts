@@ -21,10 +21,6 @@ local CameraUtils = {} do
 	
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
-	local function round(num: number)
-		return math.floor(num + 0.5)
-	end
-	
 	-- Critically damped spring class for fluid motion effects
 	local Spring = {} do
 		Spring.__index = Spring
@@ -159,7 +155,7 @@ local CameraUtils = {} do
 		if camLook.Magnitude > 0 then
 			camLook = camLook.Unit
 			local currAngle = math.atan2(camLook.Z, camLook.X)
-			local newAngle = round((math.atan2(camLook.Z, camLook.X) + rotateAngle) / roundAmount) * roundAmount
+			local newAngle = math.round((math.atan2(camLook.Z, camLook.X) + rotateAngle) / roundAmount) * roundAmount
 			return newAngle - currAngle
 		end
 		return 0
