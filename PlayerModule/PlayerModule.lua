@@ -6927,32 +6927,19 @@ local REQUIRE_Keyboard = (function()
 	
 end)()
 
-local REQUIRE_ClickToMoveController = (function()
---[[
-	-- Original By Kip Turner, Copyright Roblox 2014
-	-- Updated by Garnold to utilize the new PathfindingService API, 2017
-	-- 2018 PlayerScripts Update - AllYourBlox
---]]
+
+local ClickToMove = setmetatable({}, REQUIRE_Keyboard) do
+	ClickToMove.__index = ClickToMove
 	
-	--[[ Flags ]]
+	--[[
+		-- Original By Kip Turner, Copyright Roblox 2014
+		-- Updated by Garnold to utilize the new PathfindingService API, 2017
+		-- 2018 PlayerScripts Update - AllYourBlox
+	--]]
+	
 	local FFlagUserExcludeNonCollidableForPathfinding = getFastFlag("UserExcludeNonCollidableForPathfinding")
 	local FFlagUserClickToMoveSupportAgentCanClimb = getFastFlag("UserClickToMoveSupportAgentCanClimb2")
 	
-	--[[ Roblox Services ]]--
-	local Players = game:GetService("Players")
-	
-	local configuration = {
-		ShowPath = true,
-		PlayFailureAnimation = true,
-		UseDirectPath = false,
-		UseDirectPathForVehicle = true,
-		AgentSizeIncreaseFactor = 1.0,
-		UnreachableWaypointTimeout = 8,
-	}
-	
-	--[[ Configuration ]]
-	
-	--[[ Constants ]]--
 	local movementKeys = {
 		[Enum.KeyCode.W] = true;
 		[Enum.KeyCode.A] = true;
@@ -6962,7 +6949,7 @@ local REQUIRE_ClickToMoveController = (function()
 		[Enum.KeyCode.Down] = true;
 	}
 	
-	local LocalPlayer = Players.LocalPlayer
+	local LocalPlayer = game:GetService("Players").LocalPlayer
 	
 	local ClickToMoveDisplay = REQUIRE_ClickToMoveDisplay
 	
@@ -6984,15 +6971,11 @@ local REQUIRE_ClickToMoveController = (function()
 		end
 	end
 	
-	--------------------------CHARACTER CONTROL-------------------------------
-	
-	
-	local function GetCharacter(): Model
+	local function getCharacter(): Model
 		return LocalPlayer and LocalPlayer.Character
 	end
 	
-	
-	local function GetEquippedTool(character: Model?)
+	local function getEquippedTool(character: Model?)
 		if character then
 			for _, child in pairs(character:GetChildren()) do
 				if child:IsA('Tool') then
@@ -7001,6 +6984,15 @@ local REQUIRE_ClickToMoveController = (function()
 			end
 		end
 	end
+	
+	local configuration = {
+		ShowPath = true,
+		PlayFailureAnimation = true,
+		UseDirectPath = false,
+		UseDirectPathForVehicle = true,
+		AgentSizeIncreaseFactor = 1.0,
+		UnreachableWaypointTimeout = 8,
+	}
 	
 	local patherHandler
 	
@@ -7164,13 +7156,13 @@ local REQUIRE_ClickToMoveController = (function()
 				else
 					local extents: Vector3?
 					if FFlagUserExcludeNonCollidableForPathfinding then
-						local character: Model? = GetCharacter()
+						local character: Model? = getCharacter()
 						if character ~= nil then
 							extents = getCollidableExtentsSize(character)
 						end
 					end
 					if extents == nil then
-						extents = GetCharacter():GetExtentsSize()
+						extents = getCharacter():GetExtentsSize()
 					end
 					assert(extents, "")
 					agentRadius = configuration.AgentSizeIncreaseFactor * 0.5 * math.sqrt(extents.X * extents.X + extents.Z * extents.Z)
@@ -7575,7 +7567,7 @@ local REQUIRE_ClickToMoveController = (function()
 				return self.CurrentIgnoreList
 			end
 			self.CurrentIgnoreList = {}
-			table.insert(self.CurrentIgnoreList, GetCharacter())
+			table.insert(self.CurrentIgnoreList, getCharacter())
 			return self.CurrentIgnoreList
 		end
 		
@@ -7597,7 +7589,7 @@ local REQUIRE_ClickToMoveController = (function()
 			end
 			
 			self.CurrentIgnoreTag = newIgnoreTag
-			self.CurrentIgnoreList = {GetCharacter()}
+			self.CurrentIgnoreList = {getCharacter()}
 			
 			if self.CurrentIgnoreTag == nil then return end
 			
@@ -7641,7 +7633,7 @@ local REQUIRE_ClickToMoveController = (function()
 			self.PathCompleteListener = pather.Finished.Event:Connect(function()
 				self:CleanupPath()
 				if hitChar then
-					local currentWeapon = GetEquippedTool(character)
+					local currentWeapon = getEquippedTool(character)
 					if currentWeapon then
 						currentWeapon:Activate()
 					end
@@ -7707,6 +7699,7 @@ local REQUIRE_ClickToMoveController = (function()
 			return humanoid and humanoid.Health > 0
 		end
 		
+		local Players = game:GetService("Players")
 		local StarterGui = game:GetService("StarterGui")
 		
 		function PatherHandler:OnTap(tapPositions: {Vector3}, goToPoint: Vector3?, wasTouchTap: boolean?)
@@ -7755,7 +7748,7 @@ local REQUIRE_ClickToMoveController = (function()
 			elseif #tapPositions >= 2 then
 				if camera then
 					-- Do shoot
-					local currentWeapon = GetEquippedTool(character)
+					local currentWeapon = getEquippedTool(character)
 					if currentWeapon then
 						currentWeapon:Activate()
 					end
@@ -7767,420 +7760,413 @@ local REQUIRE_ClickToMoveController = (function()
 	
 	patherHandler = PatherHandler.new()
 	
-	--[[ The ClickToMove Controller Class ]]--
-	local KeyboardController = REQUIRE_Keyboard
+
+	function ClickToMove.new(CONTROL_ACTION_PRIORITY)
+		local self = setmetatable(REQUIRE_Keyboard.new(CONTROL_ACTION_PRIORITY), ClickToMove)
+		
+		self.fingerTouches = {}
+		self.numUnsunkTouches = 0
+		-- PC simulation
+		self.mouse1Down = tick()
+		self.mouse1DownPos = Vector2.new()
+		self.mouse2DownTime = tick()
+		self.mouse2DownPos = Vector2.new()
+		self.mouse2UpTime = tick()
+		
+		self.keyboardMoveVector = Vector3.zero
+		
+		self.tapConn = nil
+		self.inputBeganConn = nil
+		self.inputChangedConn = nil
+		self.inputEndedConn = nil
+		self.humanoidDiedConn = nil
+		self.characterChildAddedConn = nil
+		self.onCharacterAddedConn = nil
+		self.characterChildRemovedConn = nil
+		self.renderSteppedConn = nil
+		self.menuOpenedConnection = nil
+		
+		self.running = false
+		
+		self.wasdEnabled = false
+		
+		return self
+	end
 	
-	local ClickToMove = setmetatable({}, KeyboardController) do
-		ClickToMove.__index = ClickToMove
+	local function DisconnectEvent(event)
+		if event then
+			event:Disconnect()
+		end
+	end
 	
-		function ClickToMove.new(CONTROL_ACTION_PRIORITY)
-			local self = setmetatable(KeyboardController.new(CONTROL_ACTION_PRIORITY), ClickToMove)
-			
-			self.fingerTouches = {}
-			self.numUnsunkTouches = 0
-			-- PC simulation
-			self.mouse1Down = tick()
-			self.mouse1DownPos = Vector2.new()
-			self.mouse2DownTime = tick()
-			self.mouse2DownPos = Vector2.new()
-			self.mouse2UpTime = tick()
-			
-			self.keyboardMoveVector = Vector3.zero
-			
-			self.tapConn = nil
-			self.inputBeganConn = nil
-			self.inputChangedConn = nil
-			self.inputEndedConn = nil
-			self.humanoidDiedConn = nil
-			self.characterChildAddedConn = nil
-			self.onCharacterAddedConn = nil
-			self.characterChildRemovedConn = nil
-			self.renderSteppedConn = nil
-			self.menuOpenedConnection = nil
-			
-			self.running = false
-			
-			self.wasdEnabled = false
-			
-			return self
+	function ClickToMove:DisconnectEvents()
+		DisconnectEvent(self.tapConn)
+		DisconnectEvent(self.inputBeganConn)
+		DisconnectEvent(self.inputChangedConn)
+		DisconnectEvent(self.inputEndedConn)
+		DisconnectEvent(self.humanoidDiedConn)
+		DisconnectEvent(self.characterChildAddedConn)
+		DisconnectEvent(self.onCharacterAddedConn)
+		DisconnectEvent(self.renderSteppedConn)
+		DisconnectEvent(self.characterChildRemovedConn)
+		DisconnectEvent(self.menuOpenedConnection)
+	end
+	
+	function ClickToMove:OnTouchBegan(input, processed)
+		if self.fingerTouches[input] == nil and not processed then
+			self.numUnsunkTouches += 1
 		end
-		
-		local function DisconnectEvent(event)
-			if event then
-				event:Disconnect()
-			end
-		end
-		
-		function ClickToMove:DisconnectEvents()
-			DisconnectEvent(self.tapConn)
-			DisconnectEvent(self.inputBeganConn)
-			DisconnectEvent(self.inputChangedConn)
-			DisconnectEvent(self.inputEndedConn)
-			DisconnectEvent(self.humanoidDiedConn)
-			DisconnectEvent(self.characterChildAddedConn)
-			DisconnectEvent(self.onCharacterAddedConn)
-			DisconnectEvent(self.renderSteppedConn)
-			DisconnectEvent(self.characterChildRemovedConn)
-			DisconnectEvent(self.menuOpenedConnection)
-		end
-		
-		function ClickToMove:OnTouchBegan(input, processed)
-			if self.fingerTouches[input] == nil and not processed then
+		self.fingerTouches[input] = processed
+	end
+	
+	function ClickToMove:OnTouchChanged(input, processed)
+		if self.fingerTouches[input] == nil then
+			self.fingerTouches[input] = processed
+			if not processed then
 				self.numUnsunkTouches += 1
 			end
-			self.fingerTouches[input] = processed
 		end
+	end
+	
+	function ClickToMove:OnTouchEnded(input, processed)
+		if self.fingerTouches[input] ~= nil and self.fingerTouches[input] == false then
+			self.numUnsunkTouches -= 1
+		end
+		self.fingerTouches[input] = nil
+	end
+	
+	local GuiService = game:GetService("GuiService")
+	local UserInputService = game:GetService("UserInputService")
+	
+	function ClickToMove:OnCharacterAdded(character)
+		self:DisconnectEvents()
 		
-		function ClickToMove:OnTouchChanged(input, processed)
-			if self.fingerTouches[input] == nil then
-				self.fingerTouches[input] = processed
-				if not processed then
-					self.numUnsunkTouches += 1
-				end
+		self.inputBeganConn = UserInputService.InputBegan:Connect(function(input, processed)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				self:OnTouchBegan(input, processed)
 			end
-		end
-		
-		function ClickToMove:OnTouchEnded(input, processed)
-			if self.fingerTouches[input] ~= nil and self.fingerTouches[input] == false then
-				self.numUnsunkTouches -= 1
-			end
-			self.fingerTouches[input] = nil
-		end
-		
-		local GuiService = game:GetService("GuiService")
-		local UserInputService = game:GetService("UserInputService")
-		
-		function ClickToMove:OnCharacterAdded(character)
-			self:DisconnectEvents()
 			
-			self.inputBeganConn = UserInputService.InputBegan:Connect(function(input, processed)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					self:OnTouchBegan(input, processed)
-				end
-				
-				-- Cancel path when you use the keyboard controls if wasd is enabled.
-				if self.wasdEnabled
-					and processed == false
-					and input.UserInputType == Enum.UserInputType.Keyboard
-					and movementKeys[input.KeyCode] then
-					patherHandler:CleanupPath()
-					ClickToMoveDisplay.CancelFailureAnimation()
-				end
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
-					self.mouse1DownTime = tick()
-					self.mouse1DownPos = input.Position
-				end
-				if input.UserInputType == Enum.UserInputType.MouseButton2 then
-					self.mouse2DownTime = tick()
-					self.mouse2DownPos = input.Position
-				end
-			end)
-			
-			self.inputChangedConn = UserInputService.InputChanged:Connect(function(input, processed)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					self:OnTouchChanged(input, processed)
-				end
-			end)
-			
-			self.inputEndedConn = UserInputService.InputEnded:Connect(function(input, processed)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					self:OnTouchEnded(input, processed)
-				end
-				
-				if input.UserInputType == Enum.UserInputType.MouseButton2 then
-					self.mouse2UpTime = tick()
-					local currPos: Vector3 = input.Position
-					-- We allow click to move during path following or if there is no keyboard movement
-					local allowed = patherHandler.ExistingPather or self.keyboardMoveVector.Magnitude <= 0
-					if self.mouse2UpTime - self.mouse2DownTime < 0.25
-						and (currPos - self.mouse2DownPos).magnitude < 5
-						and allowed then
-						local positions = {currPos}
-						patherHandler:OnTap(positions)
-					end
-				end
-			end)
-			
-			self.tapConn = UserInputService.TouchTap:Connect(function(touchPositions, processed)
-				if not processed then
-					patherHandler:OnTap(touchPositions, nil, true)
-				end
-			end)
-			
-			self.menuOpenedConnection = GuiService.MenuOpened:Connect(function()
+			-- Cancel path when you use the keyboard controls if wasd is enabled.
+			if self.wasdEnabled
+				and processed == false
+				and input.UserInputType == Enum.UserInputType.Keyboard
+				and movementKeys[input.KeyCode] then
 				patherHandler:CleanupPath()
-			end)
-			
-			local DebrisService = game:GetService('Debris')
-			
-			local function OnCharacterChildAdded(child)
-				if UserInputService.TouchEnabled then
-					if child:IsA('Tool') then
-						child.ManualActivationOnly = true
-					end
-				end
-				if child:IsA('Humanoid') then
-					DisconnectEvent(self.humanoidDiedConn)
-					self.humanoidDiedConn = child.Died:Connect(function()
-						if patherHandler.ExistingIndicator then
-							DebrisService:AddItem(patherHandler.ExistingIndicator.Model, 1)
-						end
-					end)
-				end
+				ClickToMoveDisplay.CancelFailureAnimation()
+			end
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				self.mouse1DownTime = tick()
+				self.mouse1DownPos = input.Position
+			end
+			if input.UserInputType == Enum.UserInputType.MouseButton2 then
+				self.mouse2DownTime = tick()
+				self.mouse2DownPos = input.Position
+			end
+		end)
+		
+		self.inputChangedConn = UserInputService.InputChanged:Connect(function(input, processed)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				self:OnTouchChanged(input, processed)
+			end
+		end)
+		
+		self.inputEndedConn = UserInputService.InputEnded:Connect(function(input, processed)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				self:OnTouchEnded(input, processed)
 			end
 			
-			self.characterChildAddedConn = character.ChildAdded:Connect(function(child)
-				OnCharacterChildAdded(child)
-			end)
-			self.characterChildRemovedConn = character.ChildRemoved:Connect(function(child)
-				if UserInputService.TouchEnabled then
-					if child:IsA('Tool') then
-						child.ManualActivationOnly = false
-					end
+			if input.UserInputType == Enum.UserInputType.MouseButton2 then
+				self.mouse2UpTime = tick()
+				local currPos: Vector3 = input.Position
+				-- We allow click to move during path following or if there is no keyboard movement
+				local allowed = patherHandler.ExistingPather or self.keyboardMoveVector.Magnitude <= 0
+				if self.mouse2UpTime - self.mouse2DownTime < 0.25
+					and (currPos - self.mouse2DownPos).magnitude < 5
+					and allowed then
+					local positions = {currPos}
+					patherHandler:OnTap(positions)
 				end
-			end)
-			for _, child in pairs(character:GetChildren()) do
-				OnCharacterChildAdded(child)
 			end
-		end
+		end)
 		
-		function ClickToMove:Start()
-			self:Enable(true)
-		end
+		self.tapConn = UserInputService.TouchTap:Connect(function(touchPositions, processed)
+			if not processed then
+				patherHandler:OnTap(touchPositions, nil, true)
+			end
+		end)
 		
-		function ClickToMove:Stop()
-			self:Enable(false)
-		end
-		
-		function ClickToMove:CleanupPath()
+		self.menuOpenedConnection = GuiService.MenuOpened:Connect(function()
 			patherHandler:CleanupPath()
+		end)
+		
+		local DebrisService = game:GetService('Debris')
+		
+		local function OnCharacterChildAdded(child)
+			if UserInputService.TouchEnabled then
+				if child:IsA('Tool') then
+					child.ManualActivationOnly = true
+				end
+			end
+			if child:IsA('Humanoid') then
+				DisconnectEvent(self.humanoidDiedConn)
+				self.humanoidDiedConn = child.Died:Connect(function()
+					if patherHandler.ExistingIndicator then
+						DebrisService:AddItem(patherHandler.ExistingIndicator.Model, 1)
+					end
+				end)
+			end
 		end
 		
-		function ClickToMove:Enable(enable: boolean, enableWASD: boolean, touchJumpController)
-			if enable then
-				if not self.running then
-					if LocalPlayer.Character then -- retro-listen
-						self:OnCharacterAdded(LocalPlayer.Character)
-					end
-					self.onCharacterAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
-						self:OnCharacterAdded(char)
-					end)
-					self.running = true
+		self.characterChildAddedConn = character.ChildAdded:Connect(function(child)
+			OnCharacterChildAdded(child)
+		end)
+		self.characterChildRemovedConn = character.ChildRemoved:Connect(function(child)
+			if UserInputService.TouchEnabled then
+				if child:IsA('Tool') then
+					child.ManualActivationOnly = false
 				end
-				self.touchJumpController = touchJumpController
-				if self.touchJumpController then
-					self.touchJumpController:Enable(self.jumpEnabled)
+			end
+		end)
+		for _, child in pairs(character:GetChildren()) do
+			OnCharacterChildAdded(child)
+		end
+	end
+	
+	function ClickToMove:Start()
+		self:Enable(true)
+	end
+	
+	function ClickToMove:Stop()
+		self:Enable(false)
+	end
+	
+	function ClickToMove:CleanupPath()
+		patherHandler:CleanupPath()
+	end
+	
+	function ClickToMove:Enable(enable: boolean, enableWASD: boolean, touchJumpController)
+		if enable then
+			if not self.running then
+				if LocalPlayer.Character then -- retro-listen
+					self:OnCharacterAdded(LocalPlayer.Character)
 				end
-			else
-				if self.running then
-					self:DisconnectEvents()
-					patherHandler:CleanupPath()
-					-- Restore tool activation on shutdown
-					if UserInputService.TouchEnabled then
-						local character = LocalPlayer.Character
-						if character then
-							for _, child in pairs(character:GetChildren()) do
-								if child:IsA('Tool') then
-									child.ManualActivationOnly = false
-								end
+				self.onCharacterAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
+					self:OnCharacterAdded(char)
+				end)
+				self.running = true
+			end
+			self.touchJumpController = touchJumpController
+			if self.touchJumpController then
+				self.touchJumpController:Enable(self.jumpEnabled)
+			end
+		else
+			if self.running then
+				self:DisconnectEvents()
+				patherHandler:CleanupPath()
+				-- Restore tool activation on shutdown
+				if UserInputService.TouchEnabled then
+					local character = LocalPlayer.Character
+					if character then
+						for _, child in pairs(character:GetChildren()) do
+							if child:IsA('Tool') then
+								child.ManualActivationOnly = false
 							end
 						end
 					end
-					self.running = false
 				end
-				if self.touchJumpController and not self.jumpEnabled then
-					self.touchJumpController:Enable(true)
-				end
-				self.touchJumpController = nil
+				self.running = false
 			end
-			
-			-- Extension for initializing Keyboard input as this class now derives from Keyboard
-			if UserInputService.KeyboardEnabled and enable ~= self.enabled then
-				
-				self.forwardValue  = 0
-				self.backwardValue = 0
-				self.leftValue = 0
-				self.rightValue = 0
-				
-				self.moveVector = Vector3.zero
-				
-				if enable then
-					self:BindContextActions()
-					self:ConnectFocusEventListeners()
-				else
-					self:UnbindContextActions()
-					self:DisconnectFocusEventListeners()
-				end
+			if self.touchJumpController and not self.jumpEnabled then
+				self.touchJumpController:Enable(true)
 			end
-			
-			self.wasdEnabled = enable and enableWASD or false
-			self.enabled = enable
+			self.touchJumpController = nil
 		end
 		
-		function ClickToMove:OnRenderStepped(dt)
-			-- Reset jump
-			self.isJumping = false
+		-- Extension for initializing Keyboard input as this class now derives from Keyboard
+		if UserInputService.KeyboardEnabled and enable ~= self.enabled then
 			
-			-- Handle Pather
+			self.forwardValue  = 0
+			self.backwardValue = 0
+			self.leftValue = 0
+			self.rightValue = 0
+			
+			self.moveVector = Vector3.zero
+			
+			if enable then
+				self:BindContextActions()
+				self:ConnectFocusEventListeners()
+			else
+				self:UnbindContextActions()
+				self:DisconnectFocusEventListeners()
+			end
+		end
+		
+		self.wasdEnabled = enable and enableWASD or false
+		self.enabled = enable
+	end
+	
+	function ClickToMove:OnRenderStepped(dt)
+		-- Reset jump
+		self.isJumping = false
+		
+		-- Handle Pather
+		if patherHandler.ExistingPather then
+			-- Let the Pather update
+			patherHandler.ExistingPather:OnRenderStepped(dt)
+			
+			-- If we still have a Pather, set the resulting actions
 			if patherHandler.ExistingPather then
-				-- Let the Pather update
-				patherHandler.ExistingPather:OnRenderStepped(dt)
+				-- Setup move (NOT relative to camera)
+				self.moveVector = patherHandler.ExistingPather.NextActionMoveDirection
+				self.moveVectorIsCameraRelative = false
 				
-				-- If we still have a Pather, set the resulting actions
-				if patherHandler.ExistingPather then
-					-- Setup move (NOT relative to camera)
-					self.moveVector = patherHandler.ExistingPather.NextActionMoveDirection
-					self.moveVectorIsCameraRelative = false
-					
-					-- Setup jump (but do NOT prevent the base Keayboard class from requesting jumps as well)
-					if patherHandler.ExistingPather.NextActionJump then
-						self.isJumping = true
-					end
-				else
-					self.moveVector = self.keyboardMoveVector
-					self.moveVectorIsCameraRelative = true
+				-- Setup jump (but do NOT prevent the base Keayboard class from requesting jumps as well)
+				if patherHandler.ExistingPather.NextActionJump then
+					self.isJumping = true
 				end
 			else
 				self.moveVector = self.keyboardMoveVector
 				self.moveVectorIsCameraRelative = true
 			end
-			
-			-- Handle Keyboard's jump
-			if self.jumpRequested then
-				self.isJumping = true
-			end
+		else
+			self.moveVector = self.keyboardMoveVector
+			self.moveVectorIsCameraRelative = true
 		end
 		
-		-- Overrides Keyboard:UpdateMovement(inputState) to conditionally consider
-		-- self.wasdEnabled and let OnRenderStepped handle the movement
-		function ClickToMove:UpdateMovement(inputState)
-			if inputState == Enum.UserInputState.Cancel then
-				self.keyboardMoveVector = Vector3.zero
-			elseif self.wasdEnabled then
-				self.keyboardMoveVector = Vector3.new(
-					self.leftValue + self.rightValue,
-					0,
-					self.forwardValue + self.backwardValue
-				)
-			end
+		-- Handle Keyboard's jump
+		if self.jumpRequested then
+			self.isJumping = true
 		end
-		
-		-- Overrides Keyboard:UpdateJump() because jump is handled in OnRenderStepped
-		function ClickToMove:UpdateJump()
-			-- Nothing to do (handled in OnRenderStepped)
-		end
-		
-		--Public developer facing functions
-		function ClickToMove:SetShowPath(value)
-			configuration.ShowPath = value
-		end
-		
-		function ClickToMove:GetShowPath()
-			return configuration.ShowPath
-		end
-		
-		function ClickToMove:SetWaypointTexture(texture)
-			ClickToMoveDisplay.SetWaypointTexture(texture)
-		end
-		
-		function ClickToMove:GetWaypointTexture()
-			return ClickToMoveDisplay.GetWaypointTexture()
-		end
-		
-		function ClickToMove:SetWaypointRadius(radius)
-			ClickToMoveDisplay.SetWaypointRadius(radius)
-		end
-		
-		function ClickToMove:GetWaypointRadius()
-			return ClickToMoveDisplay.GetWaypointRadius()
-		end
-		
-		function ClickToMove:SetEndWaypointTexture(texture)
-			ClickToMoveDisplay.SetEndWaypointTexture(texture)
-		end
-		
-		function ClickToMove:GetEndWaypointTexture()
-			return ClickToMoveDisplay.GetEndWaypointTexture()
-		end
-		
-		function ClickToMove:SetWaypointsAlwaysOnTop(alwaysOnTop)
-			ClickToMoveDisplay.SetWaypointsAlwaysOnTop(alwaysOnTop)
-		end
-		
-		function ClickToMove:GetWaypointsAlwaysOnTop()
-			return ClickToMoveDisplay.GetWaypointsAlwaysOnTop()
-		end
-		
-		function ClickToMove:SetFailureAnimationEnabled(enabled)
-			configuration.PlayFailureAnimation = enabled
-		end
-		
-		function ClickToMove:GetFailureAnimationEnabled()
-			return configuration.PlayFailureAnimation
-		end
-		
-		function ClickToMove:SetIgnoredPartsTag(tag)
-			patherHandler:UpdateIgnoreTag(tag)
-		end
-		
-		function ClickToMove:GetIgnoredPartsTag()
-			return patherHandler.CurrentIgnoreTag
-		end
-		
-		function ClickToMove:SetUseDirectPath(directPath)
-			configuration.UseDirectPath = directPath
-		end
-		
-		function ClickToMove:GetUseDirectPath()
-			return configuration.UseDirectPath
-		end
-		
-		function ClickToMove:SetAgentSizeIncreaseFactor(increaseFactorPercent: number)
-			configuration.AgentSizeIncreaseFactor = 1.0 + (increaseFactorPercent / 100.0)
-		end
-		
-		function ClickToMove:GetAgentSizeIncreaseFactor()
-			return (configuration.AgentSizeIncreaseFactor - 1.0) * 100.0
-		end
-		
-		function ClickToMove:SetUnreachableWaypointTimeout(timeoutInSec)
-			configuration.UnreachableWaypointTimeout = timeoutInSec
-		end
-		
-		function ClickToMove:GetUnreachableWaypointTimeout()
-			return configuration.UnreachableWaypointTimeout
-		end
-		
-		function ClickToMove:SetUserJumpEnabled(jumpEnabled)
-			self.jumpEnabled = jumpEnabled
-			if self.touchJumpController then
-				self.touchJumpController:Enable(jumpEnabled)
-			end
-		end
-		
-		function ClickToMove:GetUserJumpEnabled()
-			return self.jumpEnabled
-		end
-		
-		function ClickToMove:MoveTo(position, showPath, useDirectPath)
-			local character = LocalPlayer.Character
-			if not character then
-				return false
-			end
-			
-			local pather = Pather.new(position, Vector3.new(0, 1, 0), useDirectPath)
-			if pather and pather:IsValidPath() then
-				patherHandler:HandleMoveTo(pather, position, nil, character, showPath)
-				return true
-			end
-			
-			return false
-		end
-	
 	end
 	
-	return ClickToMove
-end)()
+	-- Overrides Keyboard:UpdateMovement(inputState) to conditionally consider
+	-- self.wasdEnabled and let OnRenderStepped handle the movement
+	function ClickToMove:UpdateMovement(inputState)
+		if inputState == Enum.UserInputState.Cancel then
+			self.keyboardMoveVector = Vector3.zero
+		elseif self.wasdEnabled then
+			self.keyboardMoveVector = Vector3.new(
+				self.leftValue + self.rightValue,
+				0,
+				self.forwardValue + self.backwardValue
+			)
+		end
+	end
+	
+	-- Overrides Keyboard:UpdateJump() because jump is handled in OnRenderStepped
+	function ClickToMove:UpdateJump()
+		-- Nothing to do (handled in OnRenderStepped)
+	end
+	
+	--Public developer facing functions
+	function ClickToMove:SetShowPath(value)
+		configuration.ShowPath = value
+	end
+	
+	function ClickToMove:GetShowPath()
+		return configuration.ShowPath
+	end
+	
+	function ClickToMove:SetWaypointTexture(texture)
+		ClickToMoveDisplay.SetWaypointTexture(texture)
+	end
+	
+	function ClickToMove:GetWaypointTexture()
+		return ClickToMoveDisplay.GetWaypointTexture()
+	end
+	
+	function ClickToMove:SetWaypointRadius(radius)
+		ClickToMoveDisplay.SetWaypointRadius(radius)
+	end
+	
+	function ClickToMove:GetWaypointRadius()
+		return ClickToMoveDisplay.GetWaypointRadius()
+	end
+	
+	function ClickToMove:SetEndWaypointTexture(texture)
+		ClickToMoveDisplay.SetEndWaypointTexture(texture)
+	end
+	
+	function ClickToMove:GetEndWaypointTexture()
+		return ClickToMoveDisplay.GetEndWaypointTexture()
+	end
+	
+	function ClickToMove:SetWaypointsAlwaysOnTop(alwaysOnTop)
+		ClickToMoveDisplay.SetWaypointsAlwaysOnTop(alwaysOnTop)
+	end
+	
+	function ClickToMove:GetWaypointsAlwaysOnTop()
+		return ClickToMoveDisplay.GetWaypointsAlwaysOnTop()
+	end
+	
+	function ClickToMove:SetFailureAnimationEnabled(enabled)
+		configuration.PlayFailureAnimation = enabled
+	end
+	
+	function ClickToMove:GetFailureAnimationEnabled()
+		return configuration.PlayFailureAnimation
+	end
+	
+	function ClickToMove:SetIgnoredPartsTag(tag)
+		patherHandler:UpdateIgnoreTag(tag)
+	end
+	
+	function ClickToMove:GetIgnoredPartsTag()
+		return patherHandler.CurrentIgnoreTag
+	end
+	
+	function ClickToMove:SetUseDirectPath(directPath)
+		configuration.UseDirectPath = directPath
+	end
+	
+	function ClickToMove:GetUseDirectPath()
+		return configuration.UseDirectPath
+	end
+	
+	function ClickToMove:SetAgentSizeIncreaseFactor(increaseFactorPercent: number)
+		configuration.AgentSizeIncreaseFactor = 1.0 + (increaseFactorPercent / 100.0)
+	end
+	
+	function ClickToMove:GetAgentSizeIncreaseFactor()
+		return (configuration.AgentSizeIncreaseFactor - 1.0) * 100.0
+	end
+	
+	function ClickToMove:SetUnreachableWaypointTimeout(timeoutInSec)
+		configuration.UnreachableWaypointTimeout = timeoutInSec
+	end
+	
+	function ClickToMove:GetUnreachableWaypointTimeout()
+		return configuration.UnreachableWaypointTimeout
+	end
+	
+	function ClickToMove:SetUserJumpEnabled(jumpEnabled)
+		self.jumpEnabled = jumpEnabled
+		if self.touchJumpController then
+			self.touchJumpController:Enable(jumpEnabled)
+		end
+	end
+	
+	function ClickToMove:GetUserJumpEnabled()
+		return self.jumpEnabled
+	end
+	
+	function ClickToMove:MoveTo(position, showPath, useDirectPath)
+		local character = LocalPlayer.Character
+		if not character then
+			return false
+		end
+		
+		local pather = Pather.new(position, Vector3.new(0, 1, 0), useDirectPath)
+		if pather and pather:IsValidPath() then
+			patherHandler:HandleMoveTo(pather, position, nil, character, showPath)
+			return true
+		end
+		
+		return false
+	end
+
+end
+	
 
 local REQUIRE_DynamicThumbstick = (function()
 	--[[ Constants ]]--
@@ -10177,7 +10163,6 @@ REQUIRE_ControlModule = (function()
 	
 	-- These controllers handle only walk/run movement, jumping is handled by the
 	-- TouchJump controller if any of these are active
-	local ClickToMove = REQUIRE_ClickToMoveController
 	local TouchJump = REQUIRE_TouchJump
 	
 	local VehicleController = REQUIRE_VehicleController
