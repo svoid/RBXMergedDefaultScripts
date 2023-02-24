@@ -10083,21 +10083,21 @@ local REQUIRE_VehicleController = (function()
 end)()
 
 
-REQUIRE_ControlModule = (function()
---[[
-	ControlModule - This ModuleScript implements a singleton class to manage the
-	selection, activation, and deactivation of the current character movement controller.
-	This script binds to RenderStepped at Input priority and calls the Update() methods
-	on the active controller instances.
-
-	The character controller ModuleScripts implement classes which are instantiated and
-	activated as-needed, they are no longer all instantiated up front as they were in
-	the previous generation of PlayerScripts.
-
-	2018 PlayerScripts Update - AllYourBlox
---]]
-	local ControlModule = {}
+local ControlModule = {} do
 	ControlModule.__index = ControlModule
+	
+	--[[
+		ControlModule - This ModuleScript implements a singleton class to manage the
+		selection, activation, and deactivation of the current character movement controller.
+		This script binds to RenderStepped at Input priority and calls the Update() methods
+		on the active controller instances.
+
+		The character controller ModuleScripts implement classes which are instantiated and
+		activated as-needed, they are no longer all instantiated up front as they were in
+		the previous generation of PlayerScripts.
+
+		2018 PlayerScripts Update - AllYourBlox
+	--]]
 	
 	--[[ Roblox Services ]]--
 	local Players = game:GetService("Players")
@@ -10651,17 +10651,15 @@ REQUIRE_ControlModule = (function()
 		return self.controllers[ClickToMove]
 	end
 	
-	return ControlModule.new()
-	
-end)()
+end
 
 local PlayerModule = {} do
-PlayerModule.__index = PlayerModule
+	PlayerModule.__index = PlayerModule
 
 	function PlayerModule.new()
 		local self = setmetatable({},PlayerModule)
 		self.cameras = REQUIRE_CameraModule
-		self.controls = REQUIRE_ControlModule
+		self.controls = ControlModule.new()
 		return self
 	end
 
