@@ -13,7 +13,6 @@ local ContextActionService = game:GetService("ContextActionService")
 
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
-local VRService = game:GetService("VRService")
 local StarterGui = game:GetService("StarterGui")
 
 local TweenService = game:GetService("TweenService")
@@ -938,11 +937,6 @@ local CameraInput = {} do
 		local gamepadZoomPressBindable = Instance.new("BindableEvent")
 		CameraInput.gamepadZoomPress = gamepadZoomPressBindable.Event
 		
-		local gamepadResetBindable = VRService.VREnabled and Instance.new("BindableEvent") or nil
-		if VRService.VREnabled then
-			CameraInput.gamepadReset = gamepadResetBindable.Event
-		end
-		
 		function CameraInput.getRotationActivated(): boolean
 			return panInputCount > 0 or gamepadState.Thumbstick2.Magnitude > 0
 		end
@@ -1009,12 +1003,6 @@ local CameraInput = {} do
 			local function gamepadZoomPress(action, state, input)
 				if state == Enum.UserInputState.Begin then
 					gamepadZoomPressBindable:Fire()
-				end
-			end
-			
-			local function gamepadReset(action, state, input)
-				if state == Enum.UserInputState.Begin then
-					gamepadResetBindable:Fire()
 				end
 			end
 			
@@ -1205,15 +1193,6 @@ local CameraInput = {} do
 						Enum.KeyCode.O
 					)
 					
-					if VRService.VREnabled then
-						ContextActionService:BindAction(
-							"RbxCameraGamepadReset",
-							gamepadReset,
-							false,
-							Enum.KeyCode.ButtonL3
-						)
-					end
-					
 					ContextActionService:BindAction(
 						"RbxCameraGamepadZoom",
 						gamepadZoomPress,
@@ -1236,9 +1215,6 @@ local CameraInput = {} do
 					ContextActionService:UnbindAction("RbxCameraKeypress")
 					
 					ContextActionService:UnbindAction("RbxCameraGamepadZoom")
-					if VRService.VREnabled then
-						ContextActionService:UnbindAction("RbxCameraGamepadReset")
-					end 
 					
 					for _, conn in next, connectionList do
 						conn:Disconnect()
@@ -1650,14 +1626,7 @@ local BaseCamera = {} do
 	local MIN_Y = math.rad(-80)
 	local MAX_Y = math.rad(80)
 	
-	local VR_ANGLE = math.rad(15)
-	local VR_LOW_INTENSITY_ROTATION = Vector2.new(math.rad(15), 0)
-	local VR_HIGH_INTENSITY_ROTATION = Vector2.new(math.rad(45), 0)
-	local VR_LOW_INTENSITY_REPEAT = 0.1
-	local VR_HIGH_INTENSITY_REPEAT = 0.4
-	
 	local SEAT_OFFSET = Vector3.new(0, 5, 0)
-	local VR_SEAT_OFFSET = Vector3.new(0, 4, 0)
 	local HEAD_OFFSET = Vector3.new(0, 1.5, 0)
 	local R15_HEAD_OFFSET = Vector3.new(0, 1.5, 0)
 	local R15_HEAD_OFFSET_NO_SCALING = Vector3.new(0, 2, 0)
@@ -1713,18 +1682,6 @@ local BaseCamera = {} do
 		
 		self.cameraChangedConn = nil
 		self.viewportSizeChangedConn = nil
-		
-		-- VR Support
-		self.shouldUseVRRotation = false
-		self.VRRotationIntensityAvailable = false
-		self.lastVRRotationIntensityCheckTime = 0
-		self.lastVRRotationTime = 0
-		self.vrRotateKeyCooldown = {}
-		self.cameraTranslationConstraints = Vector3.new(1, 1, 1)
-		self.humanoidJumpOrigin = nil
-		self.trackingHumanoid = nil
-		self.cameraFrozen = false
-		self.subjectStateChangedConn = nil
 		
 		self.gamepadZoomPressConnection = nil
 		
@@ -2104,20 +2061,6 @@ local BaseCamera = {} do
 				end)
 			end
 		end
-		
-		-- VR support additions
-		if self.cameraSubjectChangedConn then
-			self.cameraSubjectChangedConn:Disconnect()
-			self.cameraSubjectChangedConn = nil
-		end
-		
-		local camera = workspace.CurrentCamera
-		if camera then
-			self.cameraSubjectChangedConn = camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
-				self:OnNewCameraSubject()
-			end)
-			self:OnNewCameraSubject()
-		end
 	end
 	
 	function BaseCamera:OnDynamicThumbstickEnabled()
@@ -2210,10 +2153,6 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:Cleanup()
-		if self.subjectStateChangedConn then
-			self.subjectStateChangedConn:Disconnect()
-			self.subjectStateChangedConn = nil
-		end
 		if self.viewportSizeChangedConn then
 			self.viewportSizeChangedConn:Disconnect()
 			self.viewportSizeChangedConn = nil
@@ -2385,23 +2324,6 @@ local BaseCamera = {} do
 		return newLookCFrame.LookVector
 	end
 	
-	function BaseCamera:CalculateNewLookVectorVRFromArg(rotateInput: Vector2): Vector3
-		local subjectPosition: Vector3 = self:GetSubjectPosition()
-		
-		local vecToSubject: Vector3 = (subjectPosition - (workspace.CurrentCamera).CFrame.Position)
-		local currLookVector: Vector3 = (vecToSubject * X1_Y0_Z1).unit
-		local vrRotateInput: Vector2 = Vector2.new(rotateInput.X, 0)
-		local startCFrame: CFrame = CFrame.new(Vector3.zero, currLookVector)
-		
-		local yawRotatedVector: Vector3 = (
-			CFrame.Angles(0, -vrRotateInput.X, 0)
-				* startCFrame
-				* CFrame.Angles(-vrRotateInput.Y, 0, 0)
-		).LookVector
-		
-		return (yawRotatedVector * X1_Y0_Z1).unit
-	end
-	
 	function BaseCamera:GetHumanoid(): Humanoid?
 		local character = localPlayer.Character
 		if character then
@@ -2433,14 +2355,6 @@ local BaseCamera = {} do
 		end
 	end
 	
-	
-	function BaseCamera:OnNewCameraSubject()
-		if self.subjectStateChangedConn then
-			self.subjectStateChangedConn:Disconnect()
-			self.subjectStateChangedConn = nil
-		end
-	end
-	
 	function BaseCamera:IsInFirstPerson()
 		return self.inFirstPerson
 	end
@@ -2450,9 +2364,6 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:GetCameraHeight()
-		if VRService.VREnabled and not self.inFirstPerson then
-			return math.sin(VR_ANGLE) * self.currentSubjectDistance
-		end
 		return 0
 	end
 	
@@ -3358,7 +3269,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 							end
 						end
 						
-					elseif self.isFollowCamera and (not (isInFirstPerson or userRecentlyPannedCamera) and not VRService.VREnabled) then
+					elseif self.isFollowCamera and (not (isInFirstPerson or userRecentlyPannedCamera)) then
 						-- Logic that was unique to the old FollowCamera module
 						local lastVec = -(self.lastCameraTransform.p - subjectPosition)
 						
@@ -3381,52 +3292,15 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 			end
 			
 			if not self.isFollowCamera then
-				local VREnabled = VRService.VREnabled
-				
-				if VREnabled then
-					newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
-				else
-					newCameraFocus = CFrame.new(subjectPosition)
-				end
+				newCameraFocus = CFrame.new(subjectPosition)
 				
 				local cameraFocusP = newCameraFocus.p
-				if VREnabled and not self:IsInFirstPerson() then
-					local vecToSubject = (subjectPosition - camera.CFrame.p)
-					local distToSubject = vecToSubject.magnitude
-					
-					local flaggedRotateInput = rotateInput
-					
-					-- Only move the camera if it exceeded a maximum distance to the subject in VR
-					if distToSubject > zoom or flaggedRotateInput.x ~= 0 then
-						local desiredDist = math.min(distToSubject, zoom)
-						vecToSubject = self:CalculateNewLookVectorFromArg(nil, rotateInput) * desiredDist
-						local newPos = cameraFocusP - vecToSubject
-						local desiredLookDir = camera.CFrame.lookVector
-						
-						if flaggedRotateInput.x ~= 0 then
-							desiredLookDir = vecToSubject
-						end
-						
-						local lookAt = Vector3.new(
-							newPos.x + desiredLookDir.x,
-							newPos.y,
-							newPos.z + desiredLookDir.z
-						)
-						
-						newCameraCFrame = CFrame.new(newPos, lookAt) + Vector3.new(0, cameraHeight, 0)
-					end
-				else
-					local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
-					newCameraCFrame = CFrame.new(cameraFocusP - (zoom * newLookVector), cameraFocusP)
-				end
+				local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
+				newCameraCFrame = CFrame.new(cameraFocusP - (zoom * newLookVector), cameraFocusP)
 			else -- is FollowCamera
 				local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
 				
-				if VRService.VREnabled then
-					newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
-				else
-					newCameraFocus = CFrame.new(subjectPosition)
-				end
+				newCameraFocus = CFrame.new(subjectPosition)
 				
 				newCameraCFrame = CFrame.new(
 					newCameraFocus.p - (zoom * newLookVector),
@@ -3839,71 +3713,40 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 				self:SetCameraToSubjectDistance(self.currentSubjectDistance * self.gamepadDollySpeedMultiplier)
 			end
 			
-			local VREnabled = VRService.VREnabled
-			newCameraFocus = VREnabled and self:GetVRFocus(subjectPosition, timeDelta) or CFrame.new(subjectPosition)
+			newCameraFocus = CFrame.new(subjectPosition)
 			
 			local flaggedRotateInput = CameraInput.getRotation()
 			
 			local cameraFocusP = newCameraFocus.p
-			if VREnabled and not self:IsInFirstPerson() then
-				local cameraHeight = self:GetCameraHeight()
-				local vecToSubject: Vector3 = (subjectPosition - camera.CFrame.p)
-				local distToSubject: number = vecToSubject.Magnitude
-				
-				-- Only move the camera if it exceeded a maximum distance to the subject in VR
-				if distToSubject > self.currentSubjectDistance or flaggedRotateInput.X ~= 0 then
-					local desiredDist = math.min(distToSubject, self.currentSubjectDistance)
-					
-					-- Note that CalculateNewLookVector is overridden from BaseCamera
-					vecToSubject = self:CalculateNewLookVector(
-						vecToSubject.Unit * X1_Y0_Z1,
-						Vector2.new(flaggedRotateInput.X, 0)
-					) * desiredDist
-					
-					local newPos = cameraFocusP - vecToSubject
-					local desiredLookDir = camera.CFrame.LookVector
-					if flaggedRotateInput.X ~= 0 then
-						desiredLookDir = vecToSubject
-					end
-					
-					local lookAt = Vector3.new(
-						newPos.X + desiredLookDir.X,
-						newPos.Y,
-						newPos.Z + desiredLookDir.Z
-					)
-					
-					newCameraCFrame = CFrame.new(newPos, lookAt) + Vector3.new(0, cameraHeight, 0)
-				end
-			else
-				-- rotateInput is a Vector2 of mouse movement deltas since last update
-				self.curAzimuthRad = self.curAzimuthRad - flaggedRotateInput.X
-				
-				if self.useAzimuthLimits then
-					self.curAzimuthRad = math.clamp(
-						self.curAzimuthRad,
-						self.minAzimuthAbsoluteRad,
-						self.maxAzimuthAbsoluteRad
-					)
-				else
-					self.curAzimuthRad = (self.curAzimuthRad ~= 0)
-						and (math.sign(self.curAzimuthRad) * (math.abs(self.curAzimuthRad) % TAU))
-						or 0
-				end
-				
-				self.curElevationRad = math.clamp(
-					self.curElevationRad + flaggedRotateInput.Y,
-					self.minElevationRad,
-					self.maxElevationRad
+			
+			-- rotateInput is a Vector2 of mouse movement deltas since last update
+			self.curAzimuthRad = self.curAzimuthRad - flaggedRotateInput.X
+			
+			if self.useAzimuthLimits then
+				self.curAzimuthRad = math.clamp(
+					self.curAzimuthRad,
+					self.minAzimuthAbsoluteRad,
+					self.maxAzimuthAbsoluteRad
 				)
-				
-				local cameraPosVector = self.currentSubjectDistance
-					* ( CFrame.fromEulerAnglesYXZ(-self.curElevationRad, self.curAzimuthRad, 0)
-						* UNIT_Z )
-				
-				local camPos = subjectPosition + cameraPosVector
-				
-				newCameraCFrame = CFrame.new(camPos, subjectPosition)
+			else
+				self.curAzimuthRad = (self.curAzimuthRad ~= 0)
+					and (math.sign(self.curAzimuthRad) * (math.abs(self.curAzimuthRad) % TAU))
+					or 0
 			end
+			
+			self.curElevationRad = math.clamp(
+				self.curElevationRad + flaggedRotateInput.Y,
+				self.minElevationRad,
+				self.maxElevationRad
+			)
+			
+			local cameraPosVector = self.currentSubjectDistance
+				* ( CFrame.fromEulerAnglesYXZ(-self.curElevationRad, self.curAzimuthRad, 0)
+					* UNIT_Z )
+			
+			local camPos = subjectPosition + cameraPosVector
+			
+			newCameraCFrame = CFrame.new(camPos, subjectPosition)
 			
 			self.lastCameraTransform = newCameraCFrame
 			self.lastCameraFocus = newCameraFocus
@@ -4363,888 +4206,12 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 		return cf, focus
 	end
 	
-	function VehicleCamera:ApplyVRTransform()
-		-- no-op override; VR transform is not applied in vehicles
-	end
-	
 	function VehicleCamera:EnterFirstPerson()
 		self.inFirstPerson = true
 		self:UpdateMouseBehavior()
 	end
 	
 	function VehicleCamera:LeaveFirstPerson()
-		self.inFirstPerson = false
-		self:UpdateMouseBehavior()
-	end
-	
-end
-
-
-local VRBaseCamera = setmetatable({}, BaseCamera) do
-	VRBaseCamera.__index = VRBaseCamera
-	
-	--[[
-		VRBaseCamera - Base class for VR camera
-		2021 Roblox VR
-	--]]
-	
-	--[[ Local Constants ]]--
-	local VR_ANGLE = math.rad(15)
-	local VR_PANEL_SIZE = 512
-	local VR_ZOOM = 7
-	local VR_FADE_SPEED = 10 -- 1/10 second
-	local VR_SCREEN_EGDE_BLEND_TIME = 0.14
-	local VR_SEAT_OFFSET = Vector3.new(0, 4, 0)
-	
-	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
-	
-	local Lighting = game:GetService("Lighting")
-	
-	function VRBaseCamera.new()
-		local self = setmetatable(BaseCamera.new(), VRBaseCamera)
-		
-		-- distance is different in VR
-		self.defaultDistance = VR_ZOOM
-		
-		self.defaultSubjectDistance = math.clamp(
-			self.defaultDistance,
-			localPlayer.CameraMinZoomDistance,
-			localPlayer.CameraMaxZoomDistance
-		)
-		
-		self.currentSubjectDistance = math.clamp(
-			self.defaultDistance,
-			localPlayer.CameraMinZoomDistance,
-			localPlayer.CameraMaxZoomDistance
-		)
-		
-		-- VR screen effect
-		self.VRFadeResetTimer = 0
-		self.VREdgeBlurTimer = 0
-		
-		-- initialize vr specific variables
-		self.gamepadResetConnection = nil
-		self.needsReset = true
-		
-		return self
-	end
-	
-	function VRBaseCamera:GetModuleName()
-		return "VRBaseCamera"
-	end
-	
-	function VRBaseCamera:GamepadZoomPress()
-		local dist = self:GetCameraToSubjectDistance()
-		
-		if dist > VR_ZOOM / 2 then
-			self:SetCameraToSubjectDistance(0)
-			self.currentSubjectDistance = 0
-		else
-			self:SetCameraToSubjectDistance(VR_ZOOM)
-			self.currentSubjectDistance = VR_ZOOM
-		end
-		
-		self:GamepadReset()
-		self:ResetZoom()
-	end
-	
-	function VRBaseCamera:GamepadReset()
-		self.needsReset = true
-	end
-	
-	function VRBaseCamera:ResetZoom()
-		ZoomController.SetZoomParameters(self.currentSubjectDistance, 0)
-		ZoomController.ReleaseSpring()
-	end
-	
-	function VRBaseCamera:OnEnable(enable: boolean)
-		if enable then
-			self.gamepadResetConnection = CameraInput.gamepadReset:Connect(function()
-				self:GamepadReset()
-			end)
-		else
-			-- make sure zoom is reset when switching to another camera
-			if self.inFirstPerson then
-				self:GamepadZoomPress()
-			end
-			
-			if self.gamepadResetConnection then
-				self.gamepadResetConnection:Disconnect()
-				self.gamepadResetConnection = nil
-			end
-			
-			-- reset VR effects
-			self.VREdgeBlurTimer = 0
-			self:UpdateEdgeBlur(localPlayer, 1)
-			local VRFade = Lighting:FindFirstChild("VRFade")
-			if VRFade then
-				VRFade.Brightness = 0
-			end
-		end
-	end
-	
-	function VRBaseCamera:UpdateDefaultSubjectDistance()
-		self.defaultSubjectDistance = math.clamp(
-			VR_ZOOM,
-			localPlayer.CameraMinZoomDistance,
-			localPlayer.CameraMaxZoomDistance
-		)
-	end
-	
-	-- Nominal distance, set by dollying in and out with the mouse wheel or equivalent, not measured distance
-	function VRBaseCamera:GetCameraToSubjectDistance(): number
-		return self.currentSubjectDistance
-	end
-	
-	-- VR only supports 1st person or 3rd person and no overrides
-	function VRBaseCamera:SetCameraToSubjectDistance(desiredSubjectDistance: number): number
-		local lastSubjectDistance = self.currentSubjectDistance
-		
-		local newSubjectDistance = math.clamp(
-			desiredSubjectDistance,
-			0,
-			localPlayer.CameraMaxZoomDistance
-		)
-		
-		if newSubjectDistance < 1.0 then
-			self.currentSubjectDistance = 0.5
-			if not self.inFirstPerson then
-				self:EnterFirstPerson()
-			end
-		else
-			self.currentSubjectDistance = newSubjectDistance
-			if self.inFirstPerson then
-				self:LeaveFirstPerson()
-			end
-		end
-		
-		-- Pass target distance and zoom direction to the zoom controller
-		ZoomController.SetZoomParameters(
-			self.currentSubjectDistance,
-			math.sign(desiredSubjectDistance - lastSubjectDistance)
-		)
-		
-		-- Returned only for convenience to the caller to know the outcome
-		return self.currentSubjectDistance
-	end
-	
-	-- defines subject and height of VR camera
-	function VRBaseCamera:GetVRFocus(subjectPosition, timeDelta)
-		local lastFocus = self.lastCameraFocus or subjectPosition
-		
-		self.cameraTranslationConstraints = Vector3.new(
-			self.cameraTranslationConstraints.x,
-			math.min(1, self.cameraTranslationConstraints.y + timeDelta),
-			self.cameraTranslationConstraints.z)
-		
-		local cameraHeightDelta = Vector3.new(0, self:GetCameraHeight(), 0)
-		local newFocus = CFrame.new(Vector3.new(
-			subjectPosition.x,
-			lastFocus.y,
-			subjectPosition.z
-			): Lerp(subjectPosition + cameraHeightDelta, self.cameraTranslationConstraints.y))
-		
-		return newFocus
-	end
-	
-	-- (VR) Screen effects --------------
-	function VRBaseCamera:StartFadeFromBlack()
-		if UserGameSettings.VignetteEnabled == false then
-			return
-		end
-		
-		local VRFade = Lighting:FindFirstChild("VRFade")
-		if not VRFade then
-			VRFade = Instance.new("ColorCorrectionEffect")
-			VRFade.Name = "VRFade"
-			VRFade.Parent = Lighting
-		end
-		VRFade.Brightness = -1
-		self.VRFadeResetTimer = 0.1
-	end
-	
-	function VRBaseCamera:UpdateFadeFromBlack(timeDelta: number)
-		local VRFade = Lighting:FindFirstChild("VRFade")
-		if self.VRFadeResetTimer > 0  then
-			self.VRFadeResetTimer = math.max(self.VRFadeResetTimer - timeDelta, 0)
-			
-			local VRFade = Lighting:FindFirstChild("VRFade")
-			if VRFade and VRFade.Brightness < 0 then
-				VRFade.Brightness = math.min(VRFade.Brightness + timeDelta * VR_FADE_SPEED, 0)
-			end
-		else
-			if VRFade then -- sanity check, VRFade off
-				VRFade.Brightness = 0
-			end
-		end
-	end
-	
-	function VRBaseCamera:StartVREdgeBlur(player)
-		if UserGameSettings.VignetteEnabled == false then
-			return
-		end
-		
-		local blurPart = workspace.CurrentCamera:FindFirstChild("VRBlurPart")
-		if not blurPart then
-			local basePartSize = Vector3.new(0.44,0.47,1)
-			blurPart = Instance.new("Part")
-			blurPart.Name = "VRBlurPart"
-			blurPart.Parent = workspace.CurrentCamera
-			blurPart.CanTouch = false
-			blurPart.CanCollide = false
-			blurPart.CanQuery = false
-			blurPart.Anchored = true
-			blurPart.Size = basePartSize
-			blurPart.Transparency = 1
-			blurPart.CastShadow = false
-			
-			RunService.RenderStepped:Connect(function(step)
-				local userHeadCF = VRService:GetUserCFrame(Enum.UserCFrame.Head)
-				local camera = workspace.CurrentCamera
-				
-				if FFlagUserVRApplyHeadScaleToHandPositions then
-					local vrCF = camera.CFrame
-						* (CFrame.new(userHeadCF.p * (camera).HeadScale) * (userHeadCF - userHeadCF.p))
-					
-					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0))
-						+ vrCF.LookVector * (1.05 * camera.HeadScale)
-					
-					blurPart.Size = basePartSize * camera.HeadScale
-				else
-					local vrCF = camera.CFrame * userHeadCF
-					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0)) + vrCF.LookVector * 1.05
-				end
-			end)
-		end
-		
-		local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
-		local VRBlur = nil
-		if VRScreen then
-			VRBlur = VRScreen:FindFirstChild("VRBlur")
-		end
-		
-		if not VRBlur then
-			if not VRScreen then
-				VRScreen = Instance.new("SurfaceGui")
-			end
-			
-			VRScreen.Name = "VRBlurScreen"
-			VRScreen.Parent = player.PlayerGui
-			
-			VRScreen.Adornee = blurPart
-			
-			VRBlur = Instance.new("ImageLabel")
-			VRBlur.Name = "VRBlur"
-			VRBlur.Parent = VRScreen
-			
-			VRBlur.Image = "rbxasset://textures/ui/VR/edgeBlur.png"
-			VRBlur.AnchorPoint = Vector2.new(0.5, 0.5)
-			VRBlur.Position = UDim2.new(0.5, 0, 0.5, 0)
-			
-			-- this computes the ratio between the GUI 3D panel and the VR viewport
-			-- adding 15% overshoot for edges on 2 screen headsets
-			local ratioX = workspace.CurrentCamera.ViewportSize.X * 2.3 / VR_PANEL_SIZE
-			local ratioY = workspace.CurrentCamera.ViewportSize.Y * 2.3 / VR_PANEL_SIZE
-			
-			VRBlur.Size = UDim2.fromScale(ratioX, ratioY)
-			VRBlur.BackgroundTransparency = 1
-			VRBlur.Active = true
-			VRBlur.ScaleType = Enum.ScaleType.Stretch
-		end
-		
-		VRBlur.Visible = true
-		VRBlur.ImageTransparency = 0
-		self.VREdgeBlurTimer = VR_SCREEN_EGDE_BLEND_TIME
-	end
-	
-	function VRBaseCamera:UpdateEdgeBlur(player, timeDelta)
-		local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
-		local VRBlur = nil
-		if VRScreen then
-			VRBlur = VRScreen:FindFirstChild("VRBlur")
-		end
-		
-		if VRBlur then
-			if self.VREdgeBlurTimer > 0 then
-				self.VREdgeBlurTimer = self.VREdgeBlurTimer - timeDelta
-				
-				local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
-				if VRScreen then
-					local VRBlur = VRScreen:FindFirstChild("VRBlur")
-					if VRBlur then
-						VRBlur.ImageTransparency = 1.0 - math.clamp(self.VREdgeBlurTimer, 0.01,
-							VR_SCREEN_EGDE_BLEND_TIME) * (1/VR_SCREEN_EGDE_BLEND_TIME)
-					end
-				end
-			else
-				VRBlur.Visible = false
-			end
-		end
-	end
-	
-	function VRBaseCamera:GetCameraHeight()
-		if not self.inFirstPerson then
-			return math.sin(VR_ANGLE) * self.currentSubjectDistance
-		end
-		return 0
-	end
-	
-	function VRBaseCamera:GetSubjectCFrame(): CFrame
-		local result = BaseCamera.GetSubjectCFrame(self)
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		
-		if not cameraSubject then
-			return result
-		end
-		
-		-- new VR system overrides
-		if cameraSubject:IsA("Humanoid") then
-			local humanoid = cameraSubject
-			local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
-			
-			if humanoidIsDead and humanoid == self.lastSubject then
-				result = self.lastSubjectCFrame
-			end
-		end
-		
-		if result then
-			self.lastSubjectCFrame = result
-		end
-		
-		return result
-	end
-	
-	function VRBaseCamera:GetSubjectPosition(): Vector3?
-		local result = BaseCamera.GetSubjectPosition(self)
-		
-		-- new VR system overrides
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		if cameraSubject then
-			if cameraSubject:IsA("Humanoid") then
-				local humanoid = cameraSubject
-				local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
-				
-				if  humanoidIsDead and humanoid == self.lastSubject then
-					result = self.lastSubjectPosition
-				end
-			elseif cameraSubject:IsA("VehicleSeat") then
-				local offset = VR_SEAT_OFFSET
-				result = cameraSubject.CFrame.p + cameraSubject.CFrame:vectorToWorldSpace(offset)
-			end
-		else
-			return nil
-		end
-		
-		self.lastSubjectPosition = result
-		
-		return result
-	end
-	
-end
-
-local controlModule
-local VRCamera = setmetatable({}, VRBaseCamera) do
-	VRCamera.__index = VRCamera
-	
-	--[[
-		VRCamera - Roblox VR camera control module
-		2021 Roblox VR
-	--]]
-	
-	-- Local private variables and constants
-	local CAMERA_BLACKOUT_TIME = 0.1
-	local FP_ZOOM = 0.5
-	
-	local FFlagUserFlagEnableVRUpdate3 = getFastFlag("UserFlagEnableVRUpdate3")
-	
-	function VRCamera.new()
-		local self = setmetatable(VRBaseCamera.new(), VRCamera)
-		
-		self.lastUpdate = tick()
-		self:Reset()
-		
-		return self
-	end
-	
-	function VRCamera:Reset()
-		self.needsReset = true
-		self.needsBlackout = true
-		self.motionDetTime = 0.0
-		self.blackOutTimer = 0
-		self.lastCameraResetPosition = nil
-		self.stepRotateTimeout = 0.0
-		self.cameraOffsetRotation = 0
-		self.cameraOffsetRotationDiscrete = 0
-	end
-	
-	function VRCamera:Update(timeDelta)
-		local camera = workspace.CurrentCamera
-		local newCameraCFrame = camera.CFrame
-		local newCameraFocus = camera.Focus
-		
-		local humanoid = self:GetHumanoid()
-		local cameraSubject = camera.CameraSubject
-		
-		if self.lastUpdate == nil or timeDelta > 1 then
-			self.lastCameraTransform = nil
-		end
-		
-		self:StepZoom()
-		-- update fullscreen effects
-		self:UpdateFadeFromBlack(timeDelta)
-		self:UpdateEdgeBlur(localPlayer, timeDelta)
-		
-		local lastSubjPos = self.lastSubjectPosition
-		local subjectPosition: Vector3 = self:GetSubjectPosition()
-		-- transition from another camera or from spawn
-		if self.needsBlackout then 
-			self:StartFadeFromBlack()
-			
-			local dt = math.clamp(timeDelta, 0.0001, 0.1)
-			self.blackOutTimer += dt
-			if self.blackOutTimer > CAMERA_BLACKOUT_TIME and game:IsLoaded() then
-				self.needsBlackout = false
-				self.needsReset = true
-			end
-		end
-		
-		if subjectPosition and camera then
-			newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
-			
-			if self:IsInFirstPerson() then
-				-- update camera CFrame
-				newCameraCFrame, newCameraFocus = self:UpdateFirstPersonTransform(
-					timeDelta,newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
-			else -- 3rd person
-				-- update camera CFrame
-				newCameraCFrame, newCameraFocus = self:UpdateThirdPersonTransform(
-					timeDelta, newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
-			end
-			
-			self.lastCameraTransform = newCameraCFrame
-			self.lastCameraFocus = newCameraFocus
-		end
-		
-		self.lastUpdate = tick()
-		return newCameraCFrame, newCameraFocus
-	end
-	
-	function VRCamera:UpdateFirstPersonTransform(timeDelta, newCameraCFrame,
-		newCameraFocus, lastSubjPos, subjectPosition)
-		
-		-- transition from TP to FP
-		if self.needsReset then
-			self:StartFadeFromBlack()
-			self.needsReset = false
-			self.stepRotateTimeout = 0.25
-			self.VRCameraFocusFrozen = true
-			self.cameraOffsetRotation = 0
-			self.cameraOffsetRotationDiscrete = 0
-		end
-		
-		-- blur screen edge during movement
-		local subjectDelta = lastSubjPos - subjectPosition
-		if subjectDelta.magnitude > 0.01 then
-			self:StartVREdgeBlur(localPlayer)
-		end
-		-- straight view, not angled down
-		local cameraFocusP = newCameraFocus.p
-		local cameraLookVector = self:GetCameraLookVector()
-		cameraLookVector = Vector3.new(cameraLookVector.X, 0, cameraLookVector.Z).Unit
-		
-		if self.stepRotateTimeout > 0 then
-			self.stepRotateTimeout -= timeDelta
-		end
-		
-		-- step rotate in 1st person
-		local rotateInput = CameraInput.getRotation()
-		local yawDelta = 0
-		if FFlagUserFlagEnableVRUpdate3 and UserGameSettings.VRSmoothRotationEnabled then
-			yawDelta = rotateInput.X
-		else
-			if self.stepRotateTimeout <= 0.0 and math.abs(rotateInput.X) > 0.03 then
-				yawDelta = 0.5
-				if rotateInput.X < 0 then
-					yawDelta = -0.5
-				end
-				self.needsReset = true
-			end
-		end
-		
-		local newLookVector = self:CalculateNewLookVectorFromArg(
-			cameraLookVector,
-			Vector2.new(yawDelta, 0)
-		)
-		
-		newCameraCFrame = CFrame.new(
-			cameraFocusP - (FP_ZOOM * newLookVector),
-			cameraFocusP
-		)
-		
-		return newCameraCFrame, newCameraFocus
-	end
-	
-	function VRCamera:UpdateThirdPersonTransform(timeDelta, newCameraCFrame, newCameraFocus,
-		lastSubjPos, subjectPosition)
-		
-		local zoom = self:GetCameraToSubjectDistance()
-		if zoom < 0.5 then
-			zoom = 0.5
-		end
-		
-		if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
-			-- compute delta of subject since last update
-			local subjectDelta = lastSubjPos - subjectPosition
-			local moveVector = controlModule:GetMoveVector()
-			
-			-- is the subject still moving?
-			local isMoving = subjectDelta.magnitude > 0.01 or moveVector.magnitude > 0.01
-			if isMoving then
-				self.motionDetTime = 0.1
-			end
-			
-			self.motionDetTime = self.motionDetTime - timeDelta
-			if self.motionDetTime > 0 then
-				isMoving = true
-			end
-			
-			if isMoving and not self.needsReset then
-				-- if subject moves keep old camera focus
-				newCameraFocus = self.lastCameraFocus
-				
-				-- if the focus subject stopped, time to reset the camera
-				self.VRCameraFocusFrozen = true
-			else
-				local subjectMoved = self.lastCameraResetPosition == nil
-					or (subjectPosition - self.lastCameraResetPosition).Magnitude > 1
-				
-				-- compute offset for 3rd person camera rotation
-				local rotateInput = CameraInput.getRotation()
-				local userCameraPan = FFlagUserFlagEnableVRUpdate3 and rotateInput ~= Vector2.new()
-				local panUpdate = false
-				if userCameraPan then
-					if rotateInput.X ~= 0 then
-						local tempRotation = self.cameraOffsetRotation + rotateInput.X;
-						if tempRotation < -math.pi then
-							tempRotation = math.pi - (tempRotation + math.pi) 
-						else
-							if tempRotation > math.pi then
-								tempRotation = -math.pi + (tempRotation - math.pi) 
-							end
-						end
-						self.cameraOffsetRotation = math.clamp(tempRotation, -math.pi, math.pi)
-						if UserGameSettings.VRSmoothRotationEnabled then
-							self.cameraOffsetRotationDiscrete = self.cameraOffsetRotation
-							
-							-- get player facing direction
-							local humanoid = self:GetHumanoid()
-							local forwardVector = humanoid.Torso
-								and humanoid.Torso.CFrame.lookVector
-								or Vector3.new(1, 0, 0)
-							
-							-- adjust camera height
-							local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
-							local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
-							
-							-- compute new cframe at height level to subject
-							local lookAtPos = Vector3.new(
-								newCameraFocus.Position.X,
-								newCameraPos.Y,
-								newCameraFocus.Position.Z
-							)
-							
-							local tempCF = CFrame.new(newCameraPos, lookAtPos)
-							tempCF *= CFrame.fromAxisAngle(
-								Vector3.new(0, 1, 0),
-								self.cameraOffsetRotationDiscrete
-							)
-							
-							newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
-							
-							newCameraCFrame = CFrame.new(newCameraPos, lookAtPos)
-						else
-							local tempRotDisc = math.floor(self.cameraOffsetRotation * 12 / 12)
-							if tempRotDisc ~= self.cameraOffsetRotationDiscrete then
-								self.cameraOffsetRotationDiscrete = tempRotDisc
-								panUpdate = true
-							end
-						end
-					end
-				end
-				
-				-- recenter the camera on teleport
-				if (self.VRCameraFocusFrozen and subjectMoved) or self.needsReset or panUpdate then
-					if not panUpdate then
-						self.cameraOffsetRotationDiscrete = 0
-						self.cameraOffsetRotation = 0
-					end
-					
-					VRService:RecenterUserHeadCFrame()
-					
-					self.VRCameraFocusFrozen = false
-					self.needsReset = false
-					self.lastCameraResetPosition = subjectPosition
-					
-					self:ResetZoom()
-					self:StartFadeFromBlack()
-					
-					-- get player facing direction
-					local humanoid = self:GetHumanoid()
-					local forwardVector = humanoid.Torso
-						and humanoid.Torso.CFrame.lookVector
-						or Vector3.new(1, 0, 0)
-					
-					-- adjust camera height
-					local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
-					local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
-					-- compute new cframe at height level to subject
-					local lookAtPos = Vector3.new(newCameraFocus.Position.X, newCameraPos.Y, newCameraFocus.Position.Z)
-					
-					if FFlagUserFlagEnableVRUpdate3 and self.cameraOffsetRotation ~= 0 then
-						local tempCF = CFrame.new(newCameraPos, lookAtPos)
-						tempCF *= CFrame.fromAxisAngle(Vector3.new(0,1,0), self.cameraOffsetRotationDiscrete)
-						newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
-					end
-					
-					newCameraCFrame = CFrame.new(newCameraPos, lookAtPos)
-				end
-			end
-		end
-		
-		return newCameraCFrame, newCameraFocus
-	end
-	
-	function VRCamera:EnterFirstPerson()
-		self.inFirstPerson = true
-		self:UpdateMouseBehavior()
-	end
-	
-	function VRCamera:LeaveFirstPerson()
-		self.inFirstPerson = false
-		self.needsReset = true
-		self:UpdateMouseBehavior()
-		
-		if self.VRBlur then
-			self.VRBlur.Visible = false
-		end
-	end
-	
-end
-
-local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
-	VRVehicleCamera.__index = VRVehicleCamera
-	
-	--[[
-		VRVehicleCamera - Roblox VR vehicle camera control module
-		2021 Roblox VR
-	--]]
-	
-	local EPSILON = 1e-3
-	local PITCH_LIMIT = math.rad(80)
-	local YAW_DEFAULT = math.rad(0)
-	local ZOOM_MINIMUM = 0.5
-	local ZOOM_SENSITIVITY_CURVATURE = 0.5
-	local DEFAULT_CAMERA_DIST = 16
-	local TP_FOLLOW_DIST = 200
-	local TP_FOLLOW_ANGLE_DOT = 0.56
-	
-	local Spring = CameraUtils.Spring
-	local mapClamp = CameraUtils.mapClamp
-	local sanitizeAngle = CameraUtils.sanitizeAngle
-	
-	-- pitch-axis rotational velocity of a part with a given CFrame and total RotVelocity
-	local function pitchVelocity(rotVel, cf)
-		return math.abs(cf.XVector:Dot(rotVel))
-	end
-	
-	-- yaw-axis rotational velocity of a part with a given CFrame and total RotVelocity
-	local function yawVelocity(rotVel, cf)
-		return math.abs(cf.YVector:Dot(rotVel))
-	end
-	
-	local worldDt = 1/60
-	
-	function VRVehicleCamera.new()
-		local self = setmetatable(VRBaseCamera.new(), VRVehicleCamera)
-		self:Reset()
-		
-		-- track physics solver time delta separately from the render loop to correctly synchronize time delta
-		RunService.Stepped:Connect(function(_, _worldDt)
-			worldDt = _worldDt
-		end)
-		
-		return self
-	end
-	
-	function VRVehicleCamera:Reset()
-		self.vehicleCameraCore = VehicleCameraCore.new(self:GetSubjectCFrame())
-		self.pitchSpring = Spring.new(0, -math.rad(VEHICLE_CAMERA_CONFIG.pitchBaseAngle))
-		self.yawSpring = Spring.new(0, YAW_DEFAULT)
-		
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		
-		assert(camera, "VRVehicleCamera initialization error")
-		assert(cameraSubject)
-		assert(cameraSubject:IsA("VehicleSeat"))
-		
-		local assemblyParts = cameraSubject:GetConnectedParts(true) -- passing true to recursively get all assembly parts
-		local assemblyPosition, assemblyRadius = CameraUtils.getLooseBoundingSphere(assemblyParts)
-		
-		assemblyRadius = math.max(assemblyRadius, EPSILON)
-		
-		self.assemblyRadius = assemblyRadius
-		self.assemblyOffset = cameraSubject.CFrame:Inverse()*assemblyPosition -- seat-space offset of the assembly bounding sphere center
-		
-		self.lastCameraFocus = nil
-		
-		self:_StepInitialZoom()
-	end
-	
-	function VRVehicleCamera:_StepInitialZoom()
-		self:SetCameraToSubjectDistance(math.max(
-			ZoomController.GetZoomRadius(),
-			self.assemblyRadius*VEHICLE_CAMERA_CONFIG.initialZoomRadiusMul
-			))
-	end
-	
-	function VRVehicleCamera:_GetThirdPersonLocalOffset()
-		return self.assemblyOffset + Vector3.new(
-			0,
-			self.assemblyRadius*VEHICLE_CAMERA_CONFIG.verticalCenterOffset,
-			0
-		)
-	end
-	
-	function VRVehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
-		local character = localPlayer.Character
-		
-		if character and character.Parent then
-			local head = character:FindFirstChild("Head")
-			
-			if head and head:IsA("BasePart") then
-				return subjectCFrame:Inverse() * head.Position
-			end
-		end
-		
-		return self:_GetThirdPersonLocalOffset()
-	end
-	
-	function VRVehicleCamera:Update()
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		local vehicleCameraCore = self.vehicleCameraCore
-		
-		assert(camera)
-		assert(cameraSubject)
-		assert(cameraSubject:IsA("VehicleSeat"))
-		
-		-- consume the physics solver time delta to account for mismatched physics/render cycles
-		local dt = worldDt
-		worldDt = 0
-		
-		-- get subject info
-		local subjectCFrame: CFrame = self:GetSubjectCFrame()
-		local subjectVel: Vector3 = self:GetSubjectVelocity()
-		local subjectRotVel = self:GetSubjectRotVelocity()
-		
-		-- measure the local-to-world-space forward velocity of the vehicle
-		local vDotZ = math.abs(subjectVel:Dot(subjectCFrame.ZVector))
-		local yawVel = yawVelocity(subjectRotVel, subjectCFrame)
-		local pitchVel = pitchVelocity(subjectRotVel, subjectCFrame)
-		
-		-- step camera components forward
-		local zoom = self:StepZoom()
-		
-		-- mix third and first person offsets in local space
-		local firstPerson = mapClamp(zoom, ZOOM_MINIMUM, self.assemblyRadius, 1, 0)
-		
-		local tpOffset = self:_GetThirdPersonLocalOffset()
-		local fpOffset = self:_GetFirstPersonLocalOffset(subjectCFrame)
-		local localOffset = tpOffset:Lerp(fpOffset, firstPerson)
-		
-		-- step core forward
-		vehicleCameraCore:setTransform(subjectCFrame)
-		local processedRotation = vehicleCameraCore:step(dt, pitchVel, yawVel, firstPerson)
-		
-		-- end product of this function
-		local focus = nil
-		local cf = nil
-		
-		-- update fade from black
-		self:UpdateFadeFromBlack(dt)
-		
-		if not self:IsInFirstPerson() then
-			-- third person comfort camera
-			focus =  CFrame.new(subjectCFrame*localOffset)*processedRotation
-			cf = focus*CFrame.new(0, 0, zoom)
-			
-			if not self.lastCameraFocus then
-				self.lastCameraFocus = focus
-				self.needsReset = true
-			end
-			
-			local curCameraDir = focus.Position - camera.CFrame.Position
-			local curCameraDist = curCameraDir.magnitude
-			curCameraDir = curCameraDir.Unit
-			local cameraDot = curCameraDir:Dot(camera.CFrame.LookVector)
-			
-			if cameraDot > TP_FOLLOW_ANGLE_DOT
-			and curCameraDist < TP_FOLLOW_DIST
-			and not self.needsReset then -- vehicle in view
-
-				-- keep old focus
-				focus = self.lastCameraFocus
-				
-				-- new cf result
-				local cameraFocusP = focus.p
-				local cameraLookVector = self:GetCameraLookVector()
-				cameraLookVector = Vector3.new(cameraLookVector.X, 0, cameraLookVector.Z).Unit
-				
-				local newLookVector = self:CalculateNewLookVectorFromArg(
-					cameraLookVector,
-					Vector2.new(0, 0)
-				)
-				
-				cf = CFrame.new(cameraFocusP - (zoom * newLookVector), cameraFocusP)
-			else
-				-- new focus / teleport
-				self.currentSubjectDistance = DEFAULT_CAMERA_DIST
-				self.lastCameraFocus = self:GetVRFocus(subjectCFrame.Position, dt)
-				self.needsReset = false
-				self:StartFadeFromBlack()
-				self:ResetZoom()
-			end
-			
-			self:UpdateEdgeBlur(localPlayer, dt)
-		else
-			-- first person in vehicle : lock orientation for stable camera
-			local dir = Vector3.new(
-				processedRotation.LookVector.X,
-				0,
-				processedRotation.LookVector.Z
-			).Unit
-			
-			local planarRotation = CFrame.new(processedRotation.Position, dir)
-			
-			-- this removes the pitch to reduce motion sickness
-			focus =  CFrame.new(subjectCFrame * localOffset) * planarRotation
-			cf = focus * CFrame.new(0, 0, zoom)
-			
-			self:StartVREdgeBlur(localPlayer)
-		end
-		
-		return cf, focus
-	end
-	
-	function VRVehicleCamera:EnterFirstPerson()
-		self.inFirstPerson = true
-		self:UpdateMouseBehavior()
-	end
-	
-	function VRVehicleCamera:LeaveFirstPerson()
 		self.inFirstPerson = false
 		self:UpdateMouseBehavior()
 	end
@@ -5743,7 +4710,6 @@ local CameraModule = {} do
 		self.currentComputerCameraMovementMode = nil
 
 		-- Connections to events
-		self.cameraSubjectChangedConn = nil
 		self.cameraTypeChangedConn = nil
 
 		-- Adds CharacterAdded and CharacterRemoving event handlers for all current players
@@ -5967,9 +4933,7 @@ local CameraModule = {} do
 		end
 
 		if not newCameraCreator then
-			if VRService.VREnabled then
-				newCameraCreator = VRCamera
-			elseif cameraMovementMode == Enum.ComputerCameraMovementMode.Classic
+			if cameraMovementMode == Enum.ComputerCameraMovementMode.Classic
 				or cameraMovementMode == Enum.ComputerCameraMovementMode.Follow
 				or cameraMovementMode == Enum.ComputerCameraMovementMode.Default
 				or cameraMovementMode == Enum.ComputerCameraMovementMode.CameraToggle then
@@ -5984,11 +4948,7 @@ local CameraModule = {} do
 
 		local isVehicleCamera = self:ShouldUseVehicleCamera()
 		if isVehicleCamera then
-			if VRService.VREnabled then
-				newCameraCreator = VRVehicleCamera
-			else
-				newCameraCreator = VehicleCamera
-			end
+			newCameraCreator = VehicleCamera
 		end
 
 		-- Create the camera control module we need if it does not already exist in instantiatedCameraControllers
@@ -6061,17 +5021,9 @@ local CameraModule = {} do
 		local currentCamera = workspace.CurrentCamera
 		if not currentCamera then return end
 
-		if self.cameraSubjectChangedConn then
-			self.cameraSubjectChangedConn:Disconnect()
-		end
-
 		if self.cameraTypeChangedConn then
 			self.cameraTypeChangedConn:Disconnect()
 		end
-
-		self.cameraSubjectChangedConn = currentCamera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
-			self:OnCameraSubjectChanged(currentCamera.CameraSubject)
-		end)
 
 		self.cameraTypeChangedConn = currentCamera:GetPropertyChangedSignal("CameraType"):Connect(function()
 			self:OnCameraTypeChanged(currentCamera.CameraType)
@@ -9421,600 +8373,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 end
 
 
-local PathDisplay = {} do
-	PathDisplay.spacing = 8
-	PathDisplay.image = "rbxasset://textures/Cursors/Gamepad/Pointer.png"
-	PathDisplay.imageSize = Vector2.new(2, 2)
-	
-	local currentPoints = {}
-	local renderedPoints = {}
-	
-	local pointModel = Instance.new("Model")
-	pointModel.Name = "PathDisplayPoints"
-	
-	local adorneePart = Instance.new("Part")
-	adorneePart.Anchored = true
-	adorneePart.CanCollide = false
-	adorneePart.Transparency = 1
-	adorneePart.Name = "PathDisplayAdornee"
-	adorneePart.CFrame = CFrame.new(0, 0, 0)
-	adorneePart.Parent = pointModel
-	
-	local pointPool = {}
-	local poolTop = 30
-	for i = 1, poolTop do
-		local point = Instance.new("ImageHandleAdornment")
-		point.Archivable = false
-		point.Adornee = adorneePart
-		point.Image = PathDisplay.image
-		point.Size = PathDisplay.imageSize
-		pointPool[i] = point
-	end
-	
-	local function retrieveFromPool(): ImageHandleAdornment?
-		local point = pointPool[1]
-		if not point then
-			return nil
-		end
-		
-		pointPool[1], pointPool[poolTop] = pointPool[poolTop], nil
-		poolTop = poolTop - 1
-		return point
-	end
-	
-	local function returnToPool(point: ImageHandleAdornment)
-		poolTop = poolTop + 1
-		pointPool[poolTop] = point
-	end
-	
-	local function renderPoint(point: Vector3, isLast): ImageHandleAdornment?
-		if poolTop == 0 then
-			return nil
-		end
-		
-		local rayDown = Ray.new(point + Vector3.new(0, 2, 0), Vector3.new(0, -8, 0))
-		
-		local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(
-			rayDown,
-			{ localPlayer.Character, workspace.CurrentCamera }
-		)
-		
-		if not hitPart then
-			return nil
-		end
-		
-		local pointCFrame = CFrame.new(hitPoint, hitPoint + hitNormal)
-		
-		local point = retrieveFromPool()
-		point.CFrame = pointCFrame
-		point.Parent = pointModel
-		return point
-	end
-	
-	function PathDisplay.setCurrentPoints(points)
-		if type(points) == "table" then
-			currentPoints = points
-		else
-			currentPoints = {}
-		end
-	end
-	
-	function PathDisplay.clearRenderedPath()
-		for _, oldPoint in ipairs(renderedPoints) do
-			oldPoint.Parent = nil
-			returnToPool(oldPoint)
-		end
-		
-		renderedPoints = {}
-		pointModel.Parent = nil
-	end
-	
-	function PathDisplay.renderPath()
-		PathDisplay.clearRenderedPath()
-		if not currentPoints or #currentPoints == 0 then
-			return
-		end
-		
-		local currentIdx = #currentPoints
-		local lastPos = currentPoints[currentIdx]
-		local distanceBudget = 0
-		
-		renderedPoints[1] = renderPoint(lastPos, true)
-		if not renderedPoints[1] then
-			return
-		end
-		
-		while true do
-			local currentPoint = currentPoints[currentIdx]
-			local nextPoint = currentPoints[currentIdx - 1]
-			
-			if currentIdx < 2 then
-				break
-			else
-				
-				local toNextPoint = nextPoint - currentPoint
-				local distToNextPoint = toNextPoint.magnitude
-				
-				if distanceBudget > distToNextPoint then
-					distanceBudget = distanceBudget - distToNextPoint
-					currentIdx = currentIdx - 1
-				else
-					local dirToNextPoint = toNextPoint.unit
-					local pointPos = currentPoint + (dirToNextPoint * distanceBudget)
-					local point = renderPoint(pointPos, false)
-					
-					if point then
-						table.insert(renderedPoints, point)
-					end
-					
-					distanceBudget = distanceBudget + PathDisplay.spacing
-				end
-			end
-		end
-		
-		pointModel.Parent = workspace.CurrentCamera
-	end
-	
-end
-
-local VRNavigation = setmetatable({}, BaseCharacterController) do
-	VRNavigation.__index = VRNavigation
-	
-	--[[ Constants ]]--
-	local RECALCULATE_PATH_THRESHOLD = 4
-	local NO_PATH_THRESHOLD = 12
-	local MAX_PATHING_DISTANCE = 200
-	local POINT_REACHED_THRESHOLD = 1
-	local OFFTRACK_TIME_THRESHOLD = 2
-	local THUMBSTICK_DEADZONE = 0.22
-	
-	local XZ_VECTOR3 = Vector3.new(1,0,1)
-	
-	--[[ Utility Functions ]]--
-	local function IsFinite(num: number)
-		return num == num and num ~= 1/0 and num ~= -1/0
-	end
-	
-	local function IsFiniteVector3(vec3)
-		return IsFinite(vec3.x) and IsFinite(vec3.y) and IsFinite(vec3.z)
-	end
-	
-	local movementUpdateEvent = Instance.new("BindableEvent")
-	movementUpdateEvent.Name = "MovementUpdate"
-	movementUpdateEvent.Parent = script
-	
-	
-	function VRNavigation.new(CONTROL_ACTION_PRIORITY)
-		local self = setmetatable(BaseCharacterController.new() :: any, VRNavigation)
-		
-		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
-		
-		self.navigationRequestedConn = nil
-		self.heartbeatConn = nil
-		
-		self.currentDestination = nil
-		self.currentPath = nil
-		self.currentPoints = nil
-		self.currentPointIdx = 0
-		
-		self.expectedTimeToNextPoint = 0
-		self.timeReachedLastPoint = tick()
-		self.moving = false
-		
-		self.isJumpBound = false
-		self.moveLatch = false
-		
-		self.userCFrameEnabledConn = nil
-		
-		return self
-	end
-	
-	function VRNavigation:SetLaserPointerMode(mode)
-		pcall(function()
-			StarterGui:SetCore("VRLaserPointerMode", mode)
-		end)
-	end
-	
-	function VRNavigation:GetLocalHumanoid()
-		local character = localPlayer.Character
-		if not character then
-			return
-		end
-		
-		for _, child in next, character:GetChildren() do
-			if child:IsA("Humanoid") then
-				return child
-			end
-		end
-		return nil
-	end
-	
-	function VRNavigation:HasBothHandControllers()
-		return VRService:GetUserCFrameEnabled(Enum.UserCFrame.RightHand)
-			and VRService:GetUserCFrameEnabled(Enum.UserCFrame.LeftHand)
-	end
-	
-	function VRNavigation:HasAnyHandControllers()
-		return VRService:GetUserCFrameEnabled(Enum.UserCFrame.RightHand)
-			or VRService:GetUserCFrameEnabled(Enum.UserCFrame.LeftHand)
-	end
-	
-	function VRNavigation:IsMobileVR()
-		return UserInputService.TouchEnabled
-	end
-	
-	function VRNavigation:HasGamepad()
-		return UserInputService.GamepadEnabled
-	end
-	
-	function VRNavigation:ShouldUseNavigationLaser()
-		--Places where we use the navigation laser:
-		-- mobile VR with any number of hands tracked
-		-- desktop VR with only one hand tracked
-		-- desktop VR with no hands and no gamepad (i.e. with Oculus remote?)
-		--using an Xbox controller with a desktop VR headset means no laser since the user has a thumbstick.
-		--in the future, we should query thumbstick presence with a features API
-		if self:IsMobileVR() then
-			return true
-		else
-			if self:HasBothHandControllers() then
-				return false
-			end
-			if not self:HasAnyHandControllers() then
-				return not self:HasGamepad()
-			end
-			return true
-		end
-	end
-	
-	
-	
-	function VRNavigation:StartFollowingPath(newPath)
-		self.currentPath = newPath
-		self.currentPoints = self.currentPath:GetPointCoordinates()
-		self.currentPointIdx = 1
-		self.moving = true
-		
-		self.timeReachedLastPoint = tick()
-		
-		local humanoid = self:GetLocalHumanoid()
-		if humanoid and humanoid.Torso and #self.currentPoints >= 1 then
-			local dist = (self.currentPoints[1] - humanoid.Torso.Position).magnitude
-			self.expectedTimeToNextPoint = dist / humanoid.WalkSpeed
-		end
-		
-		movementUpdateEvent:Fire("targetPoint", self.currentDestination)
-	end
-	
-	function VRNavigation:GoToPoint(point)
-		self.	currentPath = true
-		self.currentPoints = { point }
-		self.currentPointIdx = 1
-		self.moving = true
-		
-		local humanoid = self:GetLocalHumanoid()
-		local distance = (humanoid.Torso.Position - point).magnitude
-		local estimatedTimeRemaining = distance / humanoid.WalkSpeed
-		
-		self.timeReachedLastPoint = tick()
-		self.expectedTimeToNextPoint = estimatedTimeRemaining
-		
-		movementUpdateEvent:Fire("targetPoint", point)
-	end
-	
-	function VRNavigation:StopFollowingPath()
-		self.currentPath = nil
-		self.currentPoints = nil
-		self.currentPointIdx = 0
-		self.moving = false
-		self.moveVector = Vector3.zero
-	end
-	
-	local PathfindingService = game:GetService("PathfindingService")
-	
-	function VRNavigation:TryComputePath(startPos: Vector3, destination: Vector3)
-		local numAttempts = 0
-		local newPath = nil
-		
-		while not newPath and numAttempts < 5 do
-			newPath = PathfindingService:ComputeSmoothPathAsync(startPos, destination, MAX_PATHING_DISTANCE)
-			numAttempts = numAttempts + 1
-			
-			if newPath.Status == Enum.PathStatus.ClosestNoPath
-				or newPath.Status == Enum.PathStatus.ClosestOutOfRange then
-				newPath = nil
-				break
-			end
-			
-			if newPath and newPath.Status == Enum.PathStatus.FailStartNotEmpty then
-				startPos = startPos + (destination - startPos).Unit
-				newPath = nil
-			end
-			
-			if newPath and newPath.Status == Enum.PathStatus.FailFinishNotEmpty then
-				destination = destination + Vector3.new(0, 1, 0)
-				newPath = nil
-			end
-		end
-		
-		return newPath
-	end
-	
-	function VRNavigation:OnNavigationRequest(destinationCFrame: CFrame, inputUserCFrame: CFrame)
-		local destinationPosition = destinationCFrame.Position
-		local lastDestination = self.currentDestination
-		
-		if not IsFiniteVector3(destinationPosition) then
-			return
-		end
-		
-		self.currentDestination = destinationPosition
-		
-		local humanoid = self:GetLocalHumanoid()
-		if not humanoid or not humanoid.Torso then
-			return
-		end
-		
-		local currentPosition = humanoid.Torso.Position
-		local distanceToDestination = (self.currentDestination - currentPosition).magnitude
-		
-		if distanceToDestination < NO_PATH_THRESHOLD then
-			self:GoToPoint(self.currentDestination)
-			return
-		end
-		
-		if not lastDestination
-			or (self.currentDestination - lastDestination).magnitude > RECALCULATE_PATH_THRESHOLD then
-			
-			local newPath = self:TryComputePath(currentPosition, self.currentDestination)
-			if newPath then
-				self:StartFollowingPath(newPath)
-				if PathDisplay then
-					PathDisplay.setCurrentPoints(self.currentPoints)
-					PathDisplay.renderPath()
-				end
-			else
-				self:StopFollowingPath()
-				if PathDisplay then
-					PathDisplay.clearRenderedPath()
-				end
-			end
-		else
-			if self.moving then
-				table.insert(self.currentPoints, self.currentDestination)
-			else
-				self:GoToPoint(self.currentDestination)
-			end
-		end
-	end
-	
-	function VRNavigation:OnJumpAction(actionName, inputState, inputObj)
-		if inputState == Enum.UserInputState.Begin then
-			self.isJumping = true
-		end
-		return Enum.ContextActionResult.Sink
-	end
-	function VRNavigation:BindJumpAction(active)
-		if active then
-			if not self.isJumpBound then
-				self.isJumpBound = true
-				local functionToBind = function()
-					return self:OnJumpAction()
-				end
-				
-				ContextActionService:BindActionAtPriority("VRJumpAction", functionToBind,
-					false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonA)
-			end
-		else
-			if self.isJumpBound then
-				self.isJumpBound = false
-				ContextActionService:UnbindAction("VRJumpAction")
-			end
-		end
-	end
-	
-	function VRNavigation:ControlCharacterGamepad(actionName, inputState, inputObject)
-		if inputObject.KeyCode ~= Enum.KeyCode.Thumbstick1 then return end
-		
-		if inputState == Enum.UserInputState.Cancel then
-			self.moveVector =  Vector3.zero
-			return
-		end
-		
-		if inputState ~= Enum.UserInputState.End then
-			self:StopFollowingPath()
-			if PathDisplay then
-				PathDisplay.clearRenderedPath()
-			end
-			
-			if self:ShouldUseNavigationLaser() then
-				self:BindJumpAction(true)
-				self:SetLaserPointerMode("Hidden")
-			end
-			
-			if inputObject.Position.magnitude > THUMBSTICK_DEADZONE then
-				self.moveVector = Vector3.new(inputObject.Position.X, 0, -inputObject.Position.Y)
-				if self.moveVector.magnitude > 0 then
-					self.moveVector = self.moveVector.unit * math.min(1, inputObject.Position.magnitude)
-				end
-				
-				self.moveLatch = true
-			end
-		else
-			self.moveVector =  Vector3.zero
-			
-			if self:ShouldUseNavigationLaser() then
-				self:BindJumpAction(false)
-				self:SetLaserPointerMode("Navigation")
-			end
-			
-			if self.moveLatch then
-				self.moveLatch = false
-				movementUpdateEvent:Fire("offtrack")
-			end
-		end
-		return Enum.ContextActionResult.Sink
-	end
-	
-	function VRNavigation:OnHeartbeat(dt)
-		local newMoveVector = self.moveVector
-		local humanoid = self:GetLocalHumanoid()
-		if not humanoid or not humanoid.Torso then
-			return
-		end
-		
-		if self.moving and self.currentPoints then
-			local currentPosition = humanoid.Torso.Position
-			local goalPosition = self.currentPoints[1]
-			local vectorToGoal = (goalPosition - currentPosition) * XZ_VECTOR3
-			local moveDist = vectorToGoal.magnitude
-			local moveDir = vectorToGoal / moveDist
-			
-			if moveDist < POINT_REACHED_THRESHOLD then
-				local estimatedTimeRemaining = 0
-				local prevPoint = self.currentPoints[1]
-				for i, point in next, self.currentPoints do
-					if i ~= 1 then
-						local dist = (point - prevPoint).magnitude
-						prevPoint = point
-						estimatedTimeRemaining = estimatedTimeRemaining + (dist / humanoid.WalkSpeed)
-					end
-				end
-				
-				table.remove(self.currentPoints, 1)
-				self.currentPointIdx = self.currentPointIdx + 1
-				
-				if #self.currentPoints == 0 then
-					self:StopFollowingPath()
-					if PathDisplay then
-						PathDisplay.clearRenderedPath()
-					end
-					return
-				else
-					if PathDisplay then
-						PathDisplay.setCurrentPoints(self.currentPoints)
-						PathDisplay.renderPath()
-					end
-					
-					local newGoal = self.currentPoints[1]
-					local distanceToGoal = (newGoal - currentPosition).magnitude
-					self.expectedTimeToNextPoint = distanceToGoal / humanoid.WalkSpeed
-					self.timeReachedLastPoint = tick()
-				end
-			else
-				local ignoreTable = {
-					localPlayer.Character,
-					workspace.CurrentCamera
-				}
-				local obstructRay = Ray.new(currentPosition - Vector3.new(0, 1, 0), moveDir * 3)
-				local obstructPart, obstructPoint, obstructNormal =
-					workspace:FindPartOnRayWithIgnoreList(obstructRay, ignoreTable)
-				
-				if obstructPart then
-					local heightOffset = Vector3.new(0, 100, 0)
-					local jumpCheckRay = Ray.new(obstructPoint + moveDir * 0.5 + heightOffset, -heightOffset)
-					local jumpCheckPart, jumpCheckPoint, jumpCheckNormal =
-						workspace:FindPartOnRayWithIgnoreList(jumpCheckRay, ignoreTable)
-					
-					local heightDifference = jumpCheckPoint.Y - currentPosition.Y
-					if heightDifference < 6 and heightDifference > -2 then
-						humanoid.Jump = true
-					end
-				end
-				
-				local timeSinceLastPoint = tick() - self.timeReachedLastPoint
-				if timeSinceLastPoint > self.expectedTimeToNextPoint + OFFTRACK_TIME_THRESHOLD then
-					self:StopFollowingPath()
-					if PathDisplay then
-						PathDisplay.clearRenderedPath()
-					end
-					
-					movementUpdateEvent:Fire("offtrack")
-				end
-				
-				newMoveVector = self.moveVector:Lerp(moveDir, dt * 10)
-			end
-		end
-		
-		if IsFiniteVector3(newMoveVector) then
-			self.moveVector = newMoveVector
-		end
-	end
-	
-	
-	function VRNavigation:OnUserCFrameEnabled()
-		if self:ShouldUseNavigationLaser() then
-			self:BindJumpAction(false)
-			self:SetLaserPointerMode("Navigation")
-		else
-			self:BindJumpAction(true)
-			self:SetLaserPointerMode("Hidden")
-		end
-	end
-	
-	function VRNavigation:Enable(enable)
-		
-		self.moveVector = Vector3.zero
-		self.isJumping = false
-		
-		if enable then
-			self.navigationRequestedConn = VRService.NavigationRequested:Connect(
-				function(destinationCFrame, inputUserCFrame)
-					self:OnNavigationRequest(destinationCFrame, inputUserCFrame)
-				end
-			)
-			
-			self.heartbeatConn = RunService.Heartbeat:Connect(
-				function(dt) self:OnHeartbeat(dt) end
-			)
-			
-			local functionToBind = function(actionName, inputState, inputObject)
-				return self:ControlCharacterGamepad(actionName, inputState, inputObject)
-			end
-			
-			ContextActionService:BindAction("MoveThumbstick", functionToBind,
-				false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Thumbstick1)
-			
-			ContextActionService:BindActivate(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonR2)
-			
-			self.userCFrameEnabledConn = VRService.UserCFrameEnabled:Connect(
-				function() self:OnUserCFrameEnabled() end)
-			
-			self:OnUserCFrameEnabled()
-			
-			VRService:SetTouchpadMode(Enum.VRTouchpad.Left, Enum.VRTouchpadMode.VirtualThumbstick)
-			VRService:SetTouchpadMode(Enum.VRTouchpad.Right, Enum.VRTouchpadMode.ABXY)
-			
-			self.enabled = true
-		else
-			-- Disable
-			self:StopFollowingPath()
-			
-			ContextActionService:UnbindAction("MoveThumbstick")
-			ContextActionService:UnbindActivate(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonR2)
-			
-			self:BindJumpAction(false)
-			self:SetLaserPointerMode("Disabled")
-			
-			if self.navigationRequestedConn then
-				self.navigationRequestedConn:Disconnect()
-				self.navigationRequestedConn = nil
-			end
-			if self.heartbeatConn then
-				self.heartbeatConn:Disconnect()
-				self.heartbeatConn = nil
-			end
-			if self.userCFrameEnabledConn then
-				self.userCFrameEnabledConn:Disconnect()
-				self.userCFrameEnabledConn = nil
-			end
-			self.enabled = false
-		end
-	end
-	
-end
-
-
 local VehicleController = {} do
 	VehicleController.__index = VehicleController
 		
@@ -10549,15 +8907,6 @@ local ControlModule = {} do
 		
 		local cameraCFrame = camera.CFrame
 		
-		if VRService.VREnabled and humanoid.RootPart then
-			-- movement relative to VR frustum
-			local cameraDelta = humanoid.RootPart.CFrame.Position - cameraCFrame.Position
-			if cameraDelta.Magnitude < 3 then -- "nearly" first person
-				local vrFrame = VRService:GetUserCFrame(Enum.UserCFrame.Head)
-				cameraCFrame = cameraCFrame * vrFrame
-			end
-		end
-		
 		local c, s
 		local _, _, _, R00, R01, R02, _, _, R12, _, _, R22 = cameraCFrame:GetComponents()
 		if R12 < 1 and R12 > -1 then
@@ -10799,8 +9148,7 @@ local PlayerModule = {} do
 	function PlayerModule.new()
 		local self = setmetatable({},PlayerModule)
 		self.cameras = CameraModule.new()
-		controlModule = ControlModule.new()
-		self.controls = controlModule
+		self.controls = ControlModule.new()
 		return self
 	end
 
