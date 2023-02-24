@@ -320,7 +320,7 @@ local Popper do
 	-- Prevents your camera from clipping through walls.
 	--------------------------------------------------------------------------------
 	
-	local camera = game.Workspace.CurrentCamera
+	local camera = workspace.CurrentCamera
 	
 	local min = math.min
 	local tan = math.tan
@@ -2004,7 +2004,7 @@ local BaseCamera = {} do
 	
 	function BaseCamera:GetSubjectPosition(): Vector3?
 		local result = self.lastSubjectPosition
-		local camera = game.Workspace.CurrentCamera
+		local camera = workspace.CurrentCamera
 		local cameraSubject = camera and camera.CameraSubject
 		
 		if cameraSubject then
@@ -2081,7 +2081,7 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:OnViewportSizeChanged()
-		local camera = game.Workspace.CurrentCamera
+		local camera = workspace.CurrentCamera
 		local size = camera.ViewportSize
 		self.portraitMode = size.X < size.Y
 		self.isSmallTouchScreen = UserInputService.TouchEnabled and (size.Y < 500 or size.X < 700)
@@ -2097,7 +2097,7 @@ local BaseCamera = {} do
 				self.viewportSizeChangedConn = nil
 			end
 			
-			local newCamera = game.Workspace.CurrentCamera
+			local newCamera = workspace.CurrentCamera
 			
 			if newCamera then
 				self:OnViewportSizeChanged()
@@ -2113,7 +2113,7 @@ local BaseCamera = {} do
 			self.cameraSubjectChangedConn = nil
 		end
 		
-		local camera = game.Workspace.CurrentCamera
+		local camera = workspace.CurrentCamera
 		if camera then
 			self.cameraSubjectChangedConn = camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
 				self:OnNewCameraSubject()
@@ -2345,7 +2345,7 @@ local BaseCamera = {} do
 	-- never be used as the starting point for updating the nominal camera-to-subject distance (self.currentSubjectDistance)
 	-- since that is a desired target value set only by mouse wheel (or equivalent) input, PopperCam, and clamped to min max camera distance
 	function BaseCamera:GetMeasuredDistanceToFocus(): number?
-		local camera = game.Workspace.CurrentCamera
+		local camera = workspace.CurrentCamera
 		if camera then
 			return (camera.CoordinateFrame.p - camera.Focus.p).magnitude
 		end
@@ -2353,7 +2353,7 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:GetCameraLookVector(): Vector3
-		return game.Workspace.CurrentCamera and game.Workspace.CurrentCamera.CFrame.LookVector or UNIT_Z
+		return workspace.CurrentCamera and workspace.CurrentCamera.CFrame.LookVector or UNIT_Z
 	end
 	
 	function BaseCamera:CalculateNewLookCFrameFromArg(suppliedLookVector: Vector3?, rotateInput: Vector2): CFrame
@@ -2373,7 +2373,7 @@ local BaseCamera = {} do
 	
 	function BaseCamera:CalculateNewLookVectorVRFromArg(rotateInput: Vector2): Vector3
 		local subjectPosition: Vector3 = self:GetSubjectPosition()
-		local vecToSubject: Vector3 = (subjectPosition - (game.Workspace.CurrentCamera :: Camera).CFrame.Position)
+		local vecToSubject: Vector3 = (subjectPosition - (workspace.CurrentCamera :: Camera).CFrame.Position)
 		local currLookVector: Vector3 = (vecToSubject * X1_Y0_Z1).unit
 		local vrRotateInput: Vector2 = Vector2.new(rotateInput.X, 0)
 		local startCFrame: CFrame = CFrame.new(Vector3.zero, currLookVector)
@@ -2862,7 +2862,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		self.savedHits = {} 	-- Objects currently being faded in/out
 		self.trackedLimbs = {}	-- Used in limb-tracking casting modes
 		
-		self.camera = game.Workspace.CurrentCamera
+		self.camera = workspace.CurrentCamera
 		
 		self.enabled = false
 		return self
@@ -2957,7 +2957,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 			offset = Vector3.new(offset.X, math.max(offset.Y, -2.25), offset.Z)
 			
 			local ray = Ray.new(centerPoint + offset, -3 * offset)
-			local hit, hitPoint = game.Workspace:FindPartOnRayWithWhitelist(ray, partsWhitelist, false)
+			local hit, hitPoint = workspace:FindPartOnRayWithWhitelist(ray, partsWhitelist, false)
 			
 			if hit then
 				-- Use hit point as the cast point, but nudge it slightly inside the character so that bumping up against
@@ -3004,7 +3004,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 			local vp = circlePoint - self.camera.CFrame.p
 			
 			local ray = Ray.new(torsoPoint, circlePoint - torsoPoint)
-			local hit, hp, hitNormal = game.Workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
+			local hit, hp, hitNormal = workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
 			local castPoint = circlePoint
 			
 			if hit then
@@ -3026,7 +3026,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 					
 					if castPoint.Magnitude > 0 then
 						local ray = Ray.new(hprime, castPoint - hprime)
-						local hit, hitPoint, hitNormal = game.Workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
+						local hit, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
 						
 						if hit then
 							local hprime2 = hitPoint + 0.1 * hitNormal.unit
@@ -3040,7 +3040,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 				end
 				
 				local ray = Ray.new(torsoPoint, (castPoint - torsoPoint))
-				local hit, hitPoint, hitNormal = game.Workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
+				local hit, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
 				
 				if hit then
 					local castPoint2 = hitPoint - 0.1 * (castPoint - torsoPoint).unit
@@ -3141,7 +3141,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 			return desiredCameraCFrame, desiredCameraFocus
 		end
 		
-		self.camera = game.Workspace.CurrentCamera
+		self.camera = workspace.CurrentCamera
 		
 		-- TODO: Move this to a GetHumanoidRootPart helper, probably combine with CheckTorsoReference
 		-- Make sure we still have a HumanoidRootPart
@@ -4493,7 +4493,7 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 		local result = BaseCamera.GetSubjectPosition(self)
 		
 		-- new VR system overrides
-		local camera = game.Workspace.CurrentCamera
+		local camera = workspace.CurrentCamera
 		local cameraSubject = camera and camera.CameraSubject
 		if cameraSubject then
 			if cameraSubject:IsA("Humanoid") then
@@ -5569,7 +5569,7 @@ local CameraModule = {} do
 				self:OnUserGameSettingsPropertyChanged(propertyName)
 			end)
 		end
-		game.Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 			self:OnCurrentCameraChanged()
 		end)
 
@@ -5672,7 +5672,7 @@ local CameraModule = {} do
 						self.activeOcclusionModule:CharacterAdded(player.Character, player)
 					end
 				end
-				self.activeOcclusionModule:OnCameraSubjectChanged((game.Workspace.CurrentCamera :: Camera).CameraSubject)
+				self.activeOcclusionModule:OnCameraSubjectChanged((workspace.CurrentCamera :: Camera).CameraSubject)
 			end
 
 			-- Activate new choice
@@ -5831,7 +5831,7 @@ local CameraModule = {} do
 
 	-- Note: Called whenever workspace.CurrentCamera changes, but also on initialization of this script
 	function CameraModule:OnCurrentCameraChanged()
-		local currentCamera = game.Workspace.CurrentCamera
+		local currentCamera = workspace.CurrentCamera
 		if not currentCamera then return end
 
 		if self.cameraSubjectChangedConn then
@@ -5922,7 +5922,7 @@ local CameraModule = {} do
 			end
 
 			-- Here is where the new CFrame and Focus are set for this render frame
-			local currentCamera = game.Workspace.CurrentCamera :: Camera
+			local currentCamera = workspace.CurrentCamera :: Camera
 			currentCamera.CFrame = newCameraCFrame
 			currentCamera.Focus = newCameraFocus
 
@@ -6078,7 +6078,6 @@ local ClickToMoveDisplay = {} do
 	
 	local TweenService = game:GetService("TweenService")
 	local RunService = game:GetService("RunService")
-	local Workspace = game:GetService("Workspace")
 	
 	local function CreateWaypointTemplates()
 		local TrailDotTemplate = Instance.new("Part")
@@ -6167,7 +6166,7 @@ local ClickToMoveDisplay = {} do
 	local TrailDotTemplate, EndWaypointTemplate, FailureWaypointTemplate = CreateWaypointTemplates()
 	
 	local function getTrailDotParent()
-		local camera = Workspace.CurrentCamera
+		local camera = workspace.CurrentCamera
 		local trailParent = camera:FindFirstChild(TRAIL_DOT_PARENT_NAME)
 		if not trailParent then
 			trailParent = Instance.new("Model")
@@ -6179,9 +6178,9 @@ local ClickToMoveDisplay = {} do
 	
 	local function placePathWaypoint(waypointModel, position: Vector3)
 		local ray = Ray.new(position + Vector3.new(0, 2.5, 0), Vector3.new(0, -10, 0))
-		local hitPart, hitPoint, hitNormal = Workspace:FindPartOnRayWithIgnoreList(
+		local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(
 			ray,
-			{ Workspace.CurrentCamera, localPlayer.Character }
+			{ workspace.CurrentCamera, localPlayer.Character }
 		)
 		if hitPart then
 			waypointModel.CFrame = CFrame.new(hitPoint, hitPoint + hitNormal)
@@ -6299,8 +6298,8 @@ local ClickToMoveDisplay = {} do
 			local newDisplayModel: Part = FailureWaypointTemplate:Clone()
 			placePathWaypoint(newDisplayModel, position)
 			local ray = Ray.new(position + Vector3.new(0, 2.5, 0), Vector3.new(0, -10, 0))
-			local hitPart, hitPoint, hitNormal = Workspace:FindPartOnRayWithIgnoreList(
-				ray, { Workspace.CurrentCamera, localPlayer.Character }
+			local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(
+				ray, { workspace.CurrentCamera, localPlayer.Character }
 			)
 			if hitPart then
 				newDisplayModel.CFrame = CFrame.new(hitPoint, hitPoint + hitNormal)
@@ -6441,7 +6440,7 @@ local ClickToMoveDisplay = {} do
 				RunService:UnbindFromRenderStep(reiszeTrailDotsUpdateName)
 				return
 			end
-			local cameraPos = Workspace.CurrentCamera.CFrame.p
+			local cameraPos = workspace.CurrentCamera.CFrame.p
 			for i = 1, #trailDots do
 				local trailDotImage: ImageHandleAdornment = trailDots[i].DisplayModel:FindFirstChild("TrailDotImage")
 				if trailDotImage then
@@ -9845,7 +9844,6 @@ local ControlModule = {} do
 	--[[ Roblox Services ]]--
 	local RunService = game:GetService("RunService")
 	local GuiService = game:GetService("GuiService")
-	local Workspace = game:GetService("Workspace")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	local VRService = game:GetService("VRService")
 	
@@ -10140,7 +10138,7 @@ local ControlModule = {} do
 	end
 	
 	local function calculateRawMoveVector(humanoid: Humanoid, cameraRelativeMoveVector: Vector3): Vector3
-		local camera = Workspace.CurrentCamera
+		local camera = workspace.CurrentCamera
 		if not camera then
 			return cameraRelativeMoveVector
 		end
