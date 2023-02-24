@@ -6,17 +6,15 @@ local function getFastFlag(name)
 	return success and result
 end
 
-local REQUIRE_CameraUtils = (function()
+local CameraUtils = {} do
 	--[[
-	CameraUtils - Math utility functions shared by multiple camera scripts
-	2018 Camera Update - AllYourBlox
---]]
+		CameraUtils - Math utility functions shared by multiple camera scripts
+		2018 Camera Update - AllYourBlox
+	--]]
 	
 	local Players = game:GetService("Players")
 	local UserInputService = game:GetService("UserInputService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
-	
-	local CameraUtils = {}
 	
 	local function round(num: number)
 		return math.floor(num + 0.5)
@@ -314,11 +312,10 @@ local REQUIRE_CameraUtils = (function()
 		lastRotationTypeOverride = nil
 	end
 	
-	return CameraUtils
-end)()
+end
 
 
-local REQUIRE_Popper = (function()
+local Popper do
 	--------------------------------------------------------------------------------
 	-- Popper.lua
 	-- Prevents your camera from clipping through walls.
@@ -639,7 +636,7 @@ local REQUIRE_Popper = (function()
 		return true
 	end
 	
-	local function Popper(focus, targetDist, focusExtrapolation)
+	function Popper(focus, targetDist, focusExtrapolation)
 		debug.profilebegin("popper")
 		
 		subjectRoot = subjectPart and subjectPart:GetRootPart() or subjectPart
@@ -659,11 +656,9 @@ local REQUIRE_Popper = (function()
 		return dist
 	end
 	
-	return Popper
-	
-end)()
+end
 
-local REQUIRE_ZoomController = (function()
+local Zoom = {} do
 	-- Zoom
 	-- Controls the distance between the focus and the camera.
 	
@@ -673,8 +668,6 @@ local REQUIRE_ZoomController = (function()
 	
 	local MIN_FOCUS_DIST = 0.5
 	local DIST_OPAQUE = 1
-	
-	local Popper = REQUIRE_Popper
 	
 	local clamp = math.clamp
 	local exp = math.exp
@@ -760,49 +753,45 @@ local REQUIRE_ZoomController = (function()
 	
 	local zoomDelta = 0
 	
-	local Zoom = {} do
-		function Zoom.Update(renderDt: number, focus: CFrame, extrapolation)
-			local poppedZoom = math.huge
+	function Zoom.Update(renderDt: number, focus: CFrame, extrapolation)
+		local poppedZoom = math.huge
+		
+		if zoomSpring.goal > DIST_OPAQUE then
+			-- Make a pessimistic estimate of zoom distance for this step without accounting for poppercam
+			local maxPossibleZoom = max(
+				zoomSpring.x,
+				stepTargetZoom(zoomSpring.goal, zoomDelta, cameraMinZoomDistance, cameraMaxZoomDistance)
+			)
 			
-			if zoomSpring.goal > DIST_OPAQUE then
-				-- Make a pessimistic estimate of zoom distance for this step without accounting for poppercam
-				local maxPossibleZoom = max(
-					zoomSpring.x,
-					stepTargetZoom(zoomSpring.goal, zoomDelta, cameraMinZoomDistance, cameraMaxZoomDistance)
-				)
-				
-				-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
-				poppedZoom = Popper(
-					focus*CFrame.new(0, 0, MIN_FOCUS_DIST),
-					maxPossibleZoom - MIN_FOCUS_DIST,
-					extrapolation
-				) + MIN_FOCUS_DIST
-			end
-			
-			zoomSpring.minValue = MIN_FOCUS_DIST
-			zoomSpring.maxValue = min(cameraMaxZoomDistance, poppedZoom)
-			
-			return zoomSpring:Step(renderDt)
+			-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
+			poppedZoom = Popper(
+				focus*CFrame.new(0, 0, MIN_FOCUS_DIST),
+				maxPossibleZoom - MIN_FOCUS_DIST,
+				extrapolation
+			) + MIN_FOCUS_DIST
 		end
 		
-		function Zoom.GetZoomRadius()
-			return zoomSpring.x
-		end
+		zoomSpring.minValue = MIN_FOCUS_DIST
+		zoomSpring.maxValue = min(cameraMaxZoomDistance, poppedZoom)
 		
-		function Zoom.SetZoomParameters(targetZoom, newZoomDelta)
-			zoomSpring.goal = targetZoom
-			zoomDelta = newZoomDelta
-		end
-		
-		function Zoom.ReleaseSpring()
-			zoomSpring.x = zoomSpring.goal
-			zoomSpring.v = 0
-		end
+		return zoomSpring:Step(renderDt)
 	end
 	
-	return Zoom
+	function Zoom.GetZoomRadius()
+		return zoomSpring.x
+	end
 	
-end)()
+	function Zoom.SetZoomParameters(targetZoom, newZoomDelta)
+		zoomSpring.goal = targetZoom
+		zoomDelta = newZoomDelta
+	end
+	
+	function Zoom.ReleaseSpring()
+		zoomSpring.x = zoomSpring.goal
+		zoomSpring.v = 0
+	end
+	
+end
 
 
 
@@ -1595,7 +1584,6 @@ local REQUIRE_CameraToggleStateController = (function()
 	
 	local Input = REQUIRE_CameraInput
 	local CameraUI = REQUIRE_CameraUI
-	local CameraUtils = REQUIRE_CameraUtils
 	
 	local lastTogglePan = false
 	local lastTogglePanChange = tick()
@@ -1708,8 +1696,7 @@ local REQUIRE_BaseCamera = (function()
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
 	local FIRST_PERSON_DISTANCE_MIN = 0.5
 	
-	local CameraUtils = REQUIRE_CameraUtils
-	local ZoomController = REQUIRE_ZoomController
+	local ZoomController = Zoom
 	local CameraToggleStateController = REQUIRE_CameraToggleStateController
 	local CameraInput = REQUIRE_CameraInput
 	local CameraUI = REQUIRE_CameraUI
@@ -2562,7 +2549,7 @@ local REQUIRE_ClassicCamera = (function()
 	local VRService = game:GetService("VRService")
 	
 	local CameraInput = REQUIRE_CameraInput
-	local Util = REQUIRE_CameraUtils
+	local Util = CameraUtils
 	
 	--[[ The Module ]]--
 	local BaseCamera = REQUIRE_BaseCamera
@@ -3356,7 +3343,7 @@ local REQUIRE_LegacyCamera = (function()
 	
 	local PITCH_LIMIT = math.rad(80)
 	
-	local Util = REQUIRE_CameraUtils
+	local Util = CameraUtils
 	local CameraInput = REQUIRE_CameraInput
 	
 	--[[ Services ]]--
@@ -3485,7 +3472,7 @@ local REQUIRE_MouseLockController = (function()
 	local GameSettings = Settings.GameSettings
 	
 	--[[ Imports ]]
-	local CameraUtils = REQUIRE_CameraUtils
+	local CameraUtils = CameraUtils
 	
 	--[[ The Module ]]--
 	local MouseLockController = {}
@@ -3707,7 +3694,7 @@ local REQUIRE_OrbitalCamera = (function()
 	externalProperties["CCWAzimuthTravel"] = 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
 	externalProperties["UseAzimuthLimits"] = false -- Full rotation around Y axis available by default
 	
-	local Util = REQUIRE_CameraUtils
+	local Util = CameraUtils
 	local CameraInput = REQUIRE_CameraInput
 	
 	--[[ Services ]]--
@@ -3992,7 +3979,7 @@ local REQUIRE_Poppercam = (function()
 	Poppercam - Occlusion module that brings the camera closer to the subject when objects are blocking the view.
 --]]
 	
-	local ZoomController =  REQUIRE_ZoomController
+	local ZoomController = Zoom
 	
 	local TransformExtrapolator = {} do
 		TransformExtrapolator.__index = TransformExtrapolator
@@ -4109,7 +4096,7 @@ local REQUIRE_TransparencyController = (function()
 --]]
 	local MAX_TWEEN_RATE = 2.8 -- per second
 	
-	local Util = REQUIRE_CameraUtils
+	local Util = CameraUtils
 	
 	--[[ The Module ]]--
 	local TransparencyController = {}
@@ -4301,7 +4288,7 @@ local REQUIRE_VRBaseCamera = (function()
 	local VRService = game:GetService("VRService")
 	
 	local CameraInput = REQUIRE_CameraInput
-	local ZoomController = REQUIRE_ZoomController
+	local ZoomController = Zoom
 	
 	local Players = game:GetService("Players")
 	local player = Players.LocalPlayer
@@ -4657,7 +4644,7 @@ local REQUIRE_VRCamera = (function()
 	
 	-- requires
 	local CameraInput = REQUIRE_CameraInput
-	local Util = REQUIRE_CameraUtils
+	local Util = CameraUtils
 	
 	--[[ The Module ]]--
 	local VRBaseCamera = REQUIRE_VRBaseCamera
@@ -4983,7 +4970,7 @@ local REQUIRE_VehicleCameraConfig = (function()
 end)()
 
 local REQUIRE_VehicleCameraCore = (function()
-	local CameraUtils = REQUIRE_CameraUtils
+	local CameraUtils = CameraUtils
 	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
 	
 	local map = CameraUtils.map
@@ -5179,8 +5166,8 @@ local REQUIRE_VehicleCamera = (function()
 	
 	local BaseCamera = REQUIRE_BaseCamera
 	local CameraInput = REQUIRE_CameraInput
-	local CameraUtils = REQUIRE_CameraUtils
-	local ZoomController = REQUIRE_ZoomController
+	local CameraUtils = CameraUtils
+	local ZoomController = Zoom
 	local VehicleCameraCore = REQUIRE_VehicleCameraCore
 	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
 	
@@ -5408,8 +5395,8 @@ local REQUIRE_VRVehicleCamera = (function()
 	
 	local VRBaseCamera = REQUIRE_VRBaseCamera
 	local CameraInput = REQUIRE_CameraInput
-	local CameraUtils = REQUIRE_CameraUtils
-	local ZoomController = REQUIRE_ZoomController
+	local CameraUtils = CameraUtils
+	local ZoomController = Zoom
 	local VehicleCamera = REQUIRE_VehicleCamera
 	local VehicleCameraCore =  REQUIRE_VehicleCameraCore
 	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
@@ -5663,7 +5650,7 @@ local CameraModule = {} do
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 
 	-- Static camera utils
-	local CameraUtils = REQUIRE_CameraUtils
+	local CameraUtils = CameraUtils
 	local CameraInput = REQUIRE_CameraInput
 
 	-- Load Roblox Camera Controller Modules
