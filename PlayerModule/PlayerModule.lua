@@ -84,7 +84,7 @@ local CameraUtils = {} do
 	-- Ritter's loose bounding sphere algorithm
 	function CameraUtils.getLooseBoundingSphere(parts: {BasePart})
 		local points = table.create(#parts)
-		for idx, part in pairs(parts) do
+		for idx, part in next, parts do
 			points[idx] = part.Position
 		end
 		
@@ -368,7 +368,7 @@ local Popper do
 		local function refreshIgnoreList()
 			local n = 1
 			blacklist = {}
-			for _, character in pairs(charMap) do
+			for _, character in next, charMap do
 				blacklist[n] = character
 				n += 1
 			end
@@ -1030,8 +1030,8 @@ local CameraInput = {} do
 					touchState,
 				}
 				
-				for _, device in pairs(states) do
-					for k, v in pairs(device) do
+				for _, device in next, states do
+					for k, v in next, device do
 						if type(v) == "boolean" then
 							device[k] = false
 						else
@@ -1104,7 +1104,7 @@ local CameraInput = {} do
 					
 					-- collect unsunk touches
 					local unsunkTouches = {}
-					for touch, sunk in pairs(touches) do
+					for touch, sunk in next, touches do
 						if not sunk then
 							table.insert(unsunkTouches, touch)
 						end
@@ -1244,7 +1244,7 @@ local CameraInput = {} do
 						ContextActionService:UnbindAction("RbxCameraGamepadReset")
 					end 
 					
-					for _, conn in pairs(connectionList) do
+					for _, conn in next, connectionList do
 						conn:Disconnect()
 					end
 					connectionList = {}
@@ -1374,7 +1374,7 @@ local CameraUI: any = {} do
 			local inst = Instance.new(className)
 			local parent = props.Parent
 			props.Parent = nil
-			for name, val in pairs(props) do
+			for name, val in next, props do
 				if type(name) == "string" then
 					inst[name] = val
 				else
@@ -2640,7 +2640,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	end
 	
 	function Invisicam:LimbBehavior(castPoints)
-		for limb, _ in pairs(self.trackedLimbs) do
+		for limb, _ in next, self.trackedLimbs do
 			table.insert(castPoints, limb.Position)
 		end
 	end
@@ -2886,7 +2886,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		
 		self.childAddedConn = char.ChildAdded:Connect(childAdded)
 		self.childRemovedConn = char.ChildRemoved:Connect(childRemoved)
-		for _, child in pairs(self.char:GetChildren()) do
+		for _, child in next, self.char:GetChildren() do
 			childAdded(child)
 		end
 	end
@@ -2896,7 +2896,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		if vtype ~= "number" then
 			error("number expected, got " .. vtype)
 		end
-		for _, modeNum in pairs(MODE) do
+		for _, modeNum in next, MODE do
 			if modeNum == newMode then
 				self.mode = newMode
 				self.behaviorFunction = self.behaviors[self.mode]
@@ -2912,7 +2912,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	
 	-- Want to turn off Invisicam? Be sure to call this after.
 	function Invisicam:Cleanup()
-		for hit, originalFade in pairs(self.savedHits) do
+		for hit, originalFade in next, self.savedHits do
 			hit.LocalTransparencyModifier = originalFade
 		end
 	end
@@ -3001,7 +3001,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 				local hitPart = hitParts[i]
 				hitPartCount = hitPartCount + 1 -- count the part itself
 				headTorsoRayHitParts[hitPart] = true
-				for _, child in pairs(hitPart:GetChildren()) do
+				for _, child in next, hitPart:GetChildren() do
 					if child:IsA('Decal') or child:IsA('Texture') then
 						hitPartCount = hitPartCount + 1 -- count first decal hit, then break
 						break
@@ -3041,7 +3041,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 			end
 			
 			-- Check all decals and textures on the part
-			for _, child in pairs(hitPart:GetChildren()) do
+			for _, child in next, hitPart:GetChildren() do
 				if child:IsA('Decal') or child:IsA('Texture') then
 					if (child.Transparency < partTargetTransparency[hitPart]) then
 						partTargetTransparency[child] = partTargetTransparency[hitPart]
@@ -3052,7 +3052,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		end
 		
 		-- Invisibilize objects that are in the way, restore those that aren't anymore
-		for hitPart, originalLTM in pairs(self.savedHits) do
+		for hitPart, originalLTM in next, self.savedHits do
 			if currentHits[hitPart] then
 				-- LocalTransparencyModifier gets whatever value is required to print the part's total transparency to equal perPartTransparency
 				hitPart.LocalTransparencyModifier = (hitPart.Transparency < 1)
@@ -5377,7 +5377,7 @@ local MouseLockController = {} do
 		self.boundKeys = {}
 		
 		for token in string.gmatch(newValue,"[^%s,]+") do
-			for _, keyEnum in pairs(Enum.KeyCode:GetEnumItems()) do
+			for _, keyEnum in next, Enum.KeyCode:GetEnumItems() do
 				if token == keyEnum.Name then
 					table.insert(self.boundKeys, keyEnum)
 					break
@@ -5513,14 +5513,14 @@ local TransparencyController = {} do
 				self.cachedParts[object] = true
 				self.transparencyDirty = true
 			end
-			for _, child in pairs(object:GetChildren()) do
+			for _, child in next, object:GetChildren() do
 				self:CachePartsRecursive(child)
 			end
 		end
 	end
 	
 	function TransparencyController:TeardownTransparency()
-		for child, _ in pairs(self.cachedParts) do
+		for child, _ in next, self.cachedParts do
 			child.LocalTransparencyModifier = 0
 		end
 		self.cachedParts = {}
@@ -5535,11 +5535,11 @@ local TransparencyController = {} do
 			self.descendantRemovingConn:disconnect()
 			self.descendantRemovingConn = nil
 		end
-		for object, conn in pairs(self.toolDescendantAddedConns) do
+		for object, conn in next, self.toolDescendantAddedConns do
 			conn:Disconnect()
 			self.toolDescendantAddedConns[object] = nil
 		end
-		for object, conn in pairs(self.toolDescendantRemovingConns) do
+		for object, conn in next, self.toolDescendantRemovingConns do
 			conn:Disconnect()
 			self.toolDescendantRemovingConns[object] = nil
 		end
@@ -5655,7 +5655,7 @@ local TransparencyController = {} do
 			
 			-- update transparencies 
 			if self.transparencyDirty or self.lastTransparency ~= transparency then
-				for child, _ in pairs(self.cachedParts) do
+				for child, _ in next, self.cachedParts do
 					child.LocalTransparencyModifier = transparency
 				end
 				self.transparencyDirty = false
@@ -5749,7 +5749,7 @@ local CameraModule = {} do
 		self.cameraTypeChangedConn = nil
 
 		-- Adds CharacterAdded and CharacterRemoving event handlers for all current players
-		for _,player in pairs(Players:GetPlayers()) do
+		for _,player in next, Players:GetPlayers() do
 			self:OnPlayerAdded(player)
 		end
 
@@ -5778,13 +5778,13 @@ local CameraModule = {} do
 			function(dt) self:Update(dt) end)
 
 		-- Connect listeners to camera-related properties
-		for _, propertyName in pairs(PLAYER_CAMERA_PROPERTIES) do
+		for _, propertyName in next, PLAYER_CAMERA_PROPERTIES do
 			localPlayer:GetPropertyChangedSignal(propertyName):Connect(function()
 				self:OnLocalPlayerCameraPropertyChanged(propertyName)
 			end)
 		end
 
-		for _, propertyName in pairs(USER_GAME_SETTINGS_PROPERTIES) do
+		for _, propertyName in next, USER_GAME_SETTINGS_PROPERTIES do
 			UserGameSettings:GetPropertyChangedSignal(propertyName):Connect(function()
 				self:OnUserGameSettingsPropertyChanged(propertyName)
 			end)
@@ -5888,7 +5888,7 @@ local CameraModule = {} do
 				end
 			else
 				-- When Poppercam is enabled, we send it all existing player characters for its raycast ignore list
-				for _, player in pairs(Players:GetPlayers()) do
+				for _, player in next, Players:GetPlayers() do
 					if player and player.Character then
 						self.activeOcclusionModule:CharacterAdded(player.Character, player)
 					end
@@ -7078,7 +7078,7 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 	function Gamepad:GetHighestPriorityGamepad()
 		local connectedGamepads = UserInputService:GetConnectedGamepads()
 		local bestGamepad = NONE -- Note that this value is higher than all valid gamepad values
-		for _, gamepad in pairs(connectedGamepads) do
+		for _, gamepad in next, connectedGamepads do
 			if gamepad.Value < bestGamepad.Value then
 				bestGamepad = gamepad
 			end
@@ -8238,7 +8238,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 	
 	local function getEquippedTool(character: Model?)
 		if character then
-			for _, child in pairs(character:GetChildren()) do
+			for _, child in next, character:GetChildren() do
 				if child:IsA('Tool') then
 					return child
 				end
@@ -8286,7 +8286,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			local min = Vector3.new(math.huge, math.huge, math.huge)
 			local max = Vector3.new(-math.huge, -math.huge, -math.huge)
 			
-			for _,descendant in pairs(character:GetDescendants()) do
+			for _,descendant in next, character:GetDescendants() do
 				if descendant:IsA('BasePart') and descendant.CanCollide then
 					local localCFrame = toLocalCFrame * descendant.CFrame
 					
@@ -9175,7 +9175,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 				end
 			end
 		end)
-		for _, child in pairs(character:GetChildren()) do
+		for _, child in next, character:GetChildren() do
 			OnCharacterChildAdded(child)
 		end
 	end
@@ -9215,7 +9215,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 				if UserInputService.TouchEnabled then
 					local character = localPlayer.Character
 					if character then
-						for _, child in pairs(character:GetChildren()) do
+						for _, child in next, character:GetChildren() do
 							if child:IsA("Tool") then
 								child.ManualActivationOnly = false
 							end
@@ -9616,7 +9616,7 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 			return
 		end
 		
-		for _, child in pairs(character:GetChildren()) do
+		for _, child in next, character:GetChildren() do
 			if child:IsA("Humanoid") then
 				return child
 			end
@@ -9866,7 +9866,7 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 			if moveDist < POINT_REACHED_THRESHOLD then
 				local estimatedTimeRemaining = 0
 				local prevPoint = self.currentPoints[1]
-				for i, point in pairs(self.currentPoints) do
+				for i, point in next, self.currentPoints do
 					if i ~= 1 then
 						local dist = (point - prevPoint).magnitude
 						prevPoint = point
