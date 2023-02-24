@@ -18,10 +18,6 @@ local StarterGui = game:GetService("StarterGui")
 
 local TweenService = game:GetService("TweenService")
 local UserGameSettings = userSettings:GetService("UserGameSettings")
-local Lighting = game:GetService("Lighting")
-local PathfindingService = game:GetService("PathfindingService")
-local CollectionService = game:GetService("CollectionService")
-local DebrisService = game:GetService('Debris')
 
 local localPlayer = Players.LocalPlayer
 
@@ -4402,6 +4398,8 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	
 	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
 	
+	local Lighting = game:GetService("Lighting")
+	
 	function VRBaseCamera.new()
 		local self = setmetatable(BaseCamera.new(), VRBaseCamera)
 		
@@ -8193,6 +8191,7 @@ local ClickToMoveDisplay = {} do
 	
 end
 
+
 local ClickToMove = setmetatable({}, Keyboard) do
 	ClickToMove.__index = ClickToMove
 	
@@ -8319,6 +8318,8 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			if r.X < 0 or r.Y < 0 or r.Z < 0 then return nil end
 			return r
 		end
+		
+		local PathfindingService = game:GetService("PathfindingService")
 		
 		function Pather.new(endPoint, surfaceNormal, overrideUseDirectPath: boolean?)
 			local self = setmetatable({}, Pather)
@@ -8829,6 +8830,8 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			return self.CurrentIgnoreList
 		end
 		
+		local CollectionService = game:GetService("CollectionService")
+		
 		function PatherHandler:UpdateIgnoreTag(newIgnoreTag)
 			if newIgnoreTag == self.CurrentIgnoreTag then
 				return
@@ -9087,6 +9090,8 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		end
 		self.fingerTouches[input] = nil
 	end
+	
+	local DebrisService = game:GetService("Debris")
 	
 	function ClickToMove:OnCharacterAdded(character)
 		self:DisconnectEvents()
@@ -9704,6 +9709,8 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 		self.moving = false
 		self.moveVector = Vector3.zero
 	end
+	
+	local PathfindingService = game:GetService("PathfindingService")
 	
 	function VRNavigation:TryComputePath(startPos: Vector3, destination: Vector3)
 		local numAttempts = 0
