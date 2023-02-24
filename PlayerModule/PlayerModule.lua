@@ -10655,4 +10655,28 @@ REQUIRE_ControlModule = (function()
 	
 end)()
 
-return nil
+local PlayerModule = {} do
+PlayerModule.__index = PlayerModule
+
+	function PlayerModule.new()
+		local self = setmetatable({},PlayerModule)
+		self.cameras = REQUIRE_CameraModule
+		self.controls = REQUIRE_ControlModule
+		return self
+	end
+
+	function PlayerModule:GetCameras()
+		return self.cameras
+	end
+
+	function PlayerModule:GetControls()
+		return self.controls
+	end
+
+	function PlayerModule:GetClickToMoveController()
+		return self.controls:GetClickToMoveController()
+	end
+	
+end
+
+return PlayerModule.new()
