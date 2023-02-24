@@ -9032,24 +9032,22 @@ local REQUIRE_PathDisplay = (function()
 	
 end)()
 
-local REQUIRE_TouchJump = (function()
---[[
-	// FileName: TouchJump
-	// Version 1.0
-	// Written by: jmargh
-	// Description: Implements jump controls for touch devices. Use with Thumbstick and Thumbpad
---]]
+
+local TouchJump = setmetatable({}, BaseCharacterController) do
+	TouchJump.__index = TouchJump
+		
+	--[[
+		// FileName: TouchJump
+		// Version 1.0
+		// Written by: jmargh
+		// Description: Implements jump controls for touch devices. Use with Thumbstick and Thumbpad
+	--]]
 	
 	local Players = game:GetService("Players")
 	local GuiService = game:GetService("GuiService")
 	
-	--[[ Constants ]]--
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
-	
-	--[[ The Module ]]--
-	local TouchJump = setmetatable({}, BaseCharacterController)
-	TouchJump.__index = TouchJump
-	
+		
 	function TouchJump.new()
 		local self = setmetatable(BaseCharacterController.new() :: any, TouchJump)
 		
@@ -9234,9 +9232,7 @@ local REQUIRE_TouchJump = (function()
 		self.jumpButton.Parent = self.parentUIFrame
 	end
 	
-	return TouchJump
-	
-end)()
+end
 
 local REQUIRE_TouchThumbstick = (function()
 --[[
@@ -10119,9 +10115,8 @@ REQUIRE_ControlModule = (function()
 	
 	local TouchThumbstick = REQUIRE_TouchThumbstick
 	
-	-- These controllers handle only walk/run movement, jumping is handled by the
+	-- ClickToMove, VehicleController controllers handle only walk/run movement, jumping is handled by the
 	-- TouchJump controller if any of these are active
-	local TouchJump = REQUIRE_TouchJump
 	
 	local VehicleController = REQUIRE_VehicleController
 	
