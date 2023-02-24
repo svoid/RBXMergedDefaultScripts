@@ -4093,10 +4093,10 @@ local VehicleCameraCore do
 		end
 		
 		function YawPitchSpring:step(dt, pitchVel, yawVel, firstPerson)
-			assert(typeof(dt) == "number")
-			assert(typeof(yawVel) == "number")
-			assert(typeof(pitchVel) == "number")
-			assert(typeof(firstPerson) == "number")
+			assert(type(dt) == "number")
+			assert(type(yawVel) == "number")
+			assert(type(pitchVel) == "number")
+			assert(type(firstPerson) == "number")
 			
 			local fSpringYaw = self.fSpringYaw
 			local fSpringPitch = self.fSpringPitch
@@ -9487,7 +9487,7 @@ local PathDisplay = {} do
 	end
 	
 	function PathDisplay.setCurrentPoints(points)
-		if typeof(points) == "table" then
+		if type(points) == "table" then
 			currentPoints = points
 		else
 			currentPoints = {}
