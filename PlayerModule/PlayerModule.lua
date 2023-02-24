@@ -8898,9 +8898,7 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 end
 
 
-local REQUIRE_PathDisplay = (function()
-	
-	local PathDisplay = {}
+local PathDisplay = {} do
 	PathDisplay.spacing = 8
 	PathDisplay.image = "rbxasset://textures/Cursors/Gamepad/Pointer.png"
 	PathDisplay.imageSize = Vector2.new(2, 2)
@@ -9030,7 +9028,7 @@ local REQUIRE_PathDisplay = (function()
 	
 	return PathDisplay
 	
-end)()
+end
 
 
 local TouchJump = setmetatable({}, BaseCharacterController) do
@@ -9430,7 +9428,6 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 	local ContextActionService = game:GetService("ContextActionService")
 	local StarterGui = game:GetService("StarterGui")
 	
-	local PathDisplay = REQUIRE_PathDisplay
 	local LocalPlayer = Players.LocalPlayer
 	
 	--[[ Constants ]]--
