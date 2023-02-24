@@ -9424,11 +9424,8 @@ local REQUIRE_TouchThumbstick = (function()
 	
 end)()
 
-local REQUIRE_VRNavigation = (function()
-	
---[[
-		VRNavigation
---]]
+local VRNavigation = setmetatable({}, BaseCharacterController) do
+	VRNavigation.__index = VRNavigation
 	
 	local VRService = game:GetService("VRService")
 	local UserInputService = game:GetService("UserInputService")
@@ -9464,9 +9461,6 @@ local REQUIRE_VRNavigation = (function()
 	movementUpdateEvent.Name = "MovementUpdate"
 	movementUpdateEvent.Parent = script
 	
-	--[[ The Class ]]--
-	local VRNavigation = setmetatable({}, BaseCharacterController)
-	VRNavigation.__index = VRNavigation
 	
 	function VRNavigation.new(CONTROL_ACTION_PRIORITY)
 		local self = setmetatable(BaseCharacterController.new() :: any, VRNavigation)
@@ -9887,12 +9881,8 @@ local REQUIRE_VRNavigation = (function()
 		end
 	end
 	
-	return VRNavigation
-	
-end)()
+end
 
-
-	
 local VehicleController = {} do
 	VehicleController.__index = VehicleController
 		
