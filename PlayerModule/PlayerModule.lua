@@ -1694,9 +1694,6 @@ local REQUIRE_BaseCamera = (function()
 	local VR_LOW_INTENSITY_REPEAT = 0.1
 	local VR_HIGH_INTENSITY_REPEAT = 0.4
 	
-	local ZERO_VECTOR2 = Vector2.new(0,0)
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
-	
 	local SEAT_OFFSET = Vector3.new(0,5,0)
 	local VR_SEAT_OFFSET = Vector3.new(0,4,0)
 	local HEAD_OFFSET = Vector3.new(0,1.5,0)
@@ -1789,7 +1786,7 @@ local REQUIRE_BaseCamera = (function()
 		self.gamepadZoomPressConnection = nil
 		
 		-- Mouse locked formerly known as shift lock mode
-		self.mouseLockOffset = ZERO_VECTOR3
+		self.mouseLockOffset = Vector3.zero
 		
 		-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
 		-- when needed, so the code here may run well after the start of the game
@@ -1944,7 +1941,7 @@ local REQUIRE_BaseCamera = (function()
 				end
 				
 				if humanoidIsDead then
-					heightOffset = ZERO_VECTOR3
+					heightOffset = Vector3.zero
 				end
 				
 				result = bodyPartToFollow.CFrame*CFrame.new(heightOffset + humanoid.CameraOffset)
@@ -1974,7 +1971,7 @@ local REQUIRE_BaseCamera = (function()
 		local cameraSubject = camera and camera.CameraSubject
 		
 		if not cameraSubject then
-			return ZERO_VECTOR3
+			return Vector3.zero
 		end
 		
 		if cameraSubject:IsA("BasePart") then
@@ -1995,7 +1992,7 @@ local REQUIRE_BaseCamera = (function()
 			end
 		end
 		
-		return ZERO_VECTOR3
+		return Vector3.zero
 	end
 	
 	function BaseCamera:GetSubjectRotVelocity(): Vector3
@@ -2003,7 +2000,7 @@ local REQUIRE_BaseCamera = (function()
 		local cameraSubject = camera and camera.CameraSubject
 		
 		if not cameraSubject then
-			return ZERO_VECTOR3
+			return Vector3.zero
 		end
 		
 		if cameraSubject:IsA("BasePart") then
@@ -2024,7 +2021,7 @@ local REQUIRE_BaseCamera = (function()
 			end
 		end
 		
-		return ZERO_VECTOR3
+		return Vector3.zero
 	end
 	
 	function BaseCamera:StepZoom()
@@ -2088,7 +2085,7 @@ local REQUIRE_BaseCamera = (function()
 					end
 					
 					if humanoidIsDead then
-						heightOffset = ZERO_VECTOR3
+						heightOffset = Vector3.zero
 					end
 					
 					result = bodyPartToFollow.CFrame.p + bodyPartToFollow.CFrame:vectorToWorldSpace(heightOffset + humanoid.CameraOffset)
@@ -2411,7 +2408,7 @@ local REQUIRE_BaseCamera = (function()
 		local currPitchAngle = math.asin(currLookVector.Y)
 		local yTheta = math.clamp(rotateInput.Y, -MAX_Y + currPitchAngle, -MIN_Y + currPitchAngle)
 		local constrainedRotateInput = Vector2.new(rotateInput.X, yTheta)
-		local startCFrame = CFrame.new(ZERO_VECTOR3, currLookVector)
+		local startCFrame = CFrame.new(Vector3.zero, currLookVector)
 		local newLookCFrame = CFrame.Angles(0, -constrainedRotateInput.X, 0) * startCFrame * CFrame.Angles(-constrainedRotateInput.Y,0,0)
 		return newLookCFrame
 	end
@@ -2426,7 +2423,7 @@ local REQUIRE_BaseCamera = (function()
 		local vecToSubject: Vector3 = (subjectPosition - (game.Workspace.CurrentCamera :: Camera).CFrame.Position)
 		local currLookVector: Vector3 = (vecToSubject * X1_Y0_Z1).unit
 		local vrRotateInput: Vector2 = Vector2.new(rotateInput.X, 0)
-		local startCFrame: CFrame = CFrame.new(ZERO_VECTOR3, currLookVector)
+		local startCFrame: CFrame = CFrame.new(Vector3.zero, currLookVector)
 		local yawRotatedVector: Vector3 = (CFrame.Angles(0, -vrRotateInput.X, 0) * startCFrame * CFrame.Angles(-vrRotateInput.Y,0,0)).LookVector
 		return (yawRotatedVector * X1_Y0_Z1).unit
 	end
@@ -2551,8 +2548,6 @@ local REQUIRE_ClassicCamera = (function()
 --]]
 	
 	-- Local private variables and constants
-	local ZERO_VECTOR2 = Vector2.new(0,0)
-	
 	local tweenAcceleration = math.rad(220) -- Radians/Second^2
 	local tweenSpeed = math.rad(0)          -- Radians/Second
 	local tweenMaxSpeed = math.rad(250)     -- Radians/Second
@@ -2808,7 +2803,6 @@ local REQUIRE_Invisicam = (function()
 	local PlayersService = game:GetService("Players")
 	
 	--[[ Constants ]]--
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
 	local USE_STACKING_TRANSPARENCY = true	-- Multiple items between the subject and camera get transparency values that add up to TARGET_TRANSPARENCY
 	local TARGET_TRANSPARENCY = 0.75 -- Classic Invisicam's Value, also used by new invisicam for parts hit by head and torso rays
 	local TARGET_TRANSPARENCY_PERIPHERAL = 0.5 -- Used by new SMART_CIRCLE mode for items not hit by head and torso rays
@@ -2884,7 +2878,7 @@ local REQUIRE_Invisicam = (function()
 		local denom = Det3x3(v0.X,-v1.X,v2.X,v0.Y,-v1.Y,v2.Y,v0.Z,-v1.Z,v2.Z)
 		
 		if (denom == 0) then
-			return ZERO_VECTOR3 -- No solution (rays are parallel)
+			return Vector3.zero -- No solution (rays are parallel)
 		end
 		
 		local t0 = Det3x3(d1,-v1.X,v2.X,d2,-v1.Y,v2.Y,d3,-v1.Z,v2.Z) / denom
@@ -2898,7 +2892,7 @@ local REQUIRE_Invisicam = (function()
 		if (s1-s0).Magnitude < 0.25 then
 			return s
 		else
-			return ZERO_VECTOR3
+			return Vector3.zero
 		end
 	end
 	
@@ -3016,7 +3010,7 @@ local REQUIRE_Invisicam = (function()
 			castPoints[#castPoints + 1] = self.headPart.CFrame.p
 		end
 		
-		local cframe = CFrame.new(ZERO_VECTOR3,Vector3.new(self.camera.CoordinateFrame.lookVector.X,0,self.camera.CoordinateFrame.lookVector.Z))
+		local cframe = CFrame.new(Vector3.zero,Vector3.new(self.camera.CoordinateFrame.lookVector.X,0,self.camera.CoordinateFrame.lookVector.Z))
 		local centerPoint = (self.torsoPart and self.torsoPart.Position or self.humanoidRootPart.Position)
 		
 		local partsWhitelist = {self.torsoPart}
@@ -3360,7 +3354,6 @@ local REQUIRE_LegacyCamera = (function()
 	2018 Camera Update - AllYourBlox
 --]]
 	
-	local ZERO_VECTOR2 = Vector2.new()
 	local PITCH_LIMIT = math.rad(80)
 	
 	local Util = REQUIRE_CameraUtils
@@ -3695,7 +3688,6 @@ local REQUIRE_OrbitalCamera = (function()
 	-- Local private variables and constants
 	local UNIT_Z = Vector3.new(0,0,1)
 	local X1_Y0_Z1 = Vector3.new(1,0,1)	--Note: not a unit vector, used for projecting onto XZ plane
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
 	local TAU = 2 * math.pi
 	
 	-- Do not edit these values, they are not the developer-set limits, they are limits
@@ -3897,7 +3889,7 @@ local REQUIRE_OrbitalCamera = (function()
 		local currPitchAngle: number = math.asin(currLookVector.Y)
 		local yTheta: number = math.clamp(xyRotateVector.Y, currPitchAngle - math.rad(MAX_ALLOWED_ELEVATION_DEG), currPitchAngle - math.rad(MIN_ALLOWED_ELEVATION_DEG))
 		local constrainedRotateInput: Vector2 = Vector2.new(xyRotateVector.X, yTheta)
-		local startCFrame: CFrame = CFrame.new(ZERO_VECTOR3, currLookVector)
+		local startCFrame: CFrame = CFrame.new(Vector3.zero, currLookVector)
 		local newLookVector: Vector3 = (CFrame.Angles(0, -constrainedRotateInput.X, 0) * startCFrame * CFrame.Angles(-constrainedRotateInput.Y,0,0)).LookVector
 		return newLookVector
 	end
@@ -5430,8 +5422,6 @@ local REQUIRE_VRVehicleCamera = (function()
 	local mapClamp = CameraUtils.mapClamp
 	local sanitizeAngle = CameraUtils.sanitizeAngle
 	
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
-	
 	-- pitch-axis rotational velocity of a part with a given CFrame and total RotVelocity
 	local function pitchVelocity(rotVel, cf)
 		return math.abs(cf.XVector:Dot(rotVel))
@@ -6215,8 +6205,6 @@ local REQUIRE_BaseCharacterController = (function()
 	2018 PlayerScripts Update - AllYourBlox
 --]]
 	
-	local ZERO_VECTOR3: Vector3 = Vector3.new(0,0,0)
-	
 	--[[ The Module ]]--
 	local BaseCharacterController = {}
 	BaseCharacterController.__index = BaseCharacterController
@@ -6224,7 +6212,7 @@ local REQUIRE_BaseCharacterController = (function()
 	function BaseCharacterController.new()
 		local self = setmetatable({}, BaseCharacterController)
 		self.enabled = false
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 		self.moveVectorIsCameraRelative = true
 		self.isJumping = false
 		return self
@@ -8161,7 +8149,6 @@ end
 
 local REQUIRE_DynamicThumbstick = (function()
 	--[[ Constants ]]--
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
 	local TOUCH_CONTROLS_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
 	
 	local DYNAMIC_THUMBSTICK_ACTION_NAME = "DynamicThumbstickAction"
@@ -8270,7 +8257,7 @@ local REQUIRE_DynamicThumbstick = (function()
 	-- Was called OnMoveTouchEnded in previous version
 	function DynamicThumbstick:OnInputEnded()
 		self.moveTouchObject = nil
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 		self:FadeThumbstick(false)
 	end
 	
@@ -8364,7 +8351,7 @@ local REQUIRE_DynamicThumbstick = (function()
 		-- Scaled Radial Dead Zone
 		local inputAxisMagnitude: number = currentMoveVector.Magnitude
 		if inputAxisMagnitude < self.radiusOfDeadZone then
-			currentMoveVector = ZERO_VECTOR3
+			currentMoveVector = Vector3.zero
 		else
 			currentMoveVector = currentMoveVector.Unit*(
 				1 - math.max(0, (self.radiusOfMaxSpeed - currentMoveVector.Magnitude)/self.radiusOfMaxSpeed)
@@ -8716,7 +8703,6 @@ local REQUIRE_Gamepad = (function()
 	local ContextActionService = game:GetService("ContextActionService")
 	
 	--[[ Constants ]]--
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
 	local NONE = Enum.UserInputType.None
 	local thumbstickDeadzone = 0.2
 	
@@ -8757,7 +8743,7 @@ local REQUIRE_Gamepad = (function()
 		self.backwardValue = 0
 		self.leftValue = 0
 		self.rightValue = 0
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 		self.isJumping = false
 		
 		if enable then
@@ -8807,7 +8793,7 @@ local REQUIRE_Gamepad = (function()
 		local handleThumbstickInput = function(actionName, inputState, inputObject)
 			
 			if inputState == Enum.UserInputState.Cancel then
-				self.moveVector = ZERO_VECTOR3
+				self.moveVector = Vector3.zero
 				return Enum.ContextActionResult.Sink
 			end
 			
@@ -8819,7 +8805,7 @@ local REQUIRE_Gamepad = (function()
 			if inputObject.Position.magnitude > thumbstickDeadzone then
 				self.moveVector  =  Vector3.new(inputObject.Position.X, 0, -inputObject.Position.Y)
 			else
-				self.moveVector = ZERO_VECTOR3
+				self.moveVector = Vector3.zero
 			end
 			return Enum.ContextActionResult.Sink
 		end
@@ -9274,7 +9260,6 @@ local REQUIRE_TouchThumbstick = (function()
 	local GuiService = game:GetService("GuiService")
 	local UserInputService = game:GetService("UserInputService")
 	--[[ Constants ]]--
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
 	--[[ The Module ]]--
 	local BaseCharacterController = REQUIRE_BaseCharacterController
@@ -9300,7 +9285,7 @@ local REQUIRE_TouchThumbstick = (function()
 		enable = enable and true or false				-- Force anything non-nil to boolean before comparison
 		if self.enabled == enable then return true end	-- If no state change, return true indicating already in requested state
 		
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 		self.isJumping = false
 		
 		if enable then
@@ -9320,7 +9305,7 @@ local REQUIRE_TouchThumbstick = (function()
 		self.thumbstickFrame.Position = self.screenPos
 		self.stickImage.Position = UDim2.new(0, self.thumbstickFrame.Size.X.Offset/2 - self.thumbstickSize/4, 0, self.thumbstickFrame.Size.Y.Offset/2 - self.thumbstickSize/4)
 		
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 		self.isJumping = false
 		self.thumbstickFrame.Position = self.screenPos
 		self.moveTouchObject = nil
@@ -9481,7 +9466,6 @@ local REQUIRE_VRNavigation = (function()
 	local OFFTRACK_TIME_THRESHOLD = 2
 	local THUMBSTICK_DEADZONE = 0.22
 	
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
 	local XZ_VECTOR3 = Vector3.new(1,0,1)
 	
 	--[[ Utility Functions ]]--
@@ -9625,7 +9609,7 @@ local REQUIRE_VRNavigation = (function()
 		self.currentPoints = nil
 		self.currentPointIdx = 0
 		self.moving = false
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 	end
 	
 	function VRNavigation:TryComputePath(startPos: Vector3, destination: Vector3)
@@ -9730,7 +9714,7 @@ local REQUIRE_VRNavigation = (function()
 		if inputObject.KeyCode ~= Enum.KeyCode.Thumbstick1 then return end
 		
 		if inputState == Enum.UserInputState.Cancel then
-			self.moveVector =  ZERO_VECTOR3
+			self.moveVector =  Vector3.zero
 			return
 		end
 		
@@ -9754,7 +9738,7 @@ local REQUIRE_VRNavigation = (function()
 				self.moveLatch = true
 			end
 		else
-			self.moveVector =  ZERO_VECTOR3
+			self.moveVector =  Vector3.zero
 			
 			if self:ShouldUseNavigationLaser() then
 				self:BindJumpAction(false)
@@ -9865,7 +9849,7 @@ local REQUIRE_VRNavigation = (function()
 	
 	function VRNavigation:Enable(enable)
 		
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 		self.isJumping = false
 		
 		if enable then
@@ -9942,7 +9926,6 @@ local REQUIRE_VehicleController = (function()
 	local useTriggersForThrottle = true
 	-- Also set this to true if you want the thumbstick to not affect throttle, only triggers when a gamepad is conected
 	local onlyTriggersForThrottle = false
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
 	
 	local AUTO_PILOT_DEFAULT_MAX_STEERING_ANGLE = 35
 	
@@ -9966,7 +9949,7 @@ local REQUIRE_VehicleController = (function()
 		self.turningRight = 0
 		self.turningLeft = 0
 		
-		self.vehicleMoveVector = ZERO_VECTOR3
+		self.vehicleMoveVector = Vector3.zero
 		
 		self.autoPilot = {}
 		self.autoPilot.MaxSpeed = 0
@@ -10002,7 +9985,7 @@ local REQUIRE_VehicleController = (function()
 		end
 		
 		self.enabled = enable
-		self.vehicleMoveVector = ZERO_VECTOR3
+		self.vehicleMoveVector = Vector3.zero
 		
 		if enable then
 			if vehicleSeat then
@@ -10079,14 +10062,14 @@ local REQUIRE_VehicleController = (function()
 				self.vehicleSeat.ThrottleFloat = self:ComputeThrottle(localMoveVector)
 				self.vehicleSeat.SteerFloat = self:ComputeSteer(localMoveVector)
 				
-				return ZERO_VECTOR3, true
+				return Vector3.zero, true
 			end
 		end
 		return moveVector, false
 	end
 	
 	function VehicleController:ComputeThrottle(localMoveVector)
-		if localMoveVector ~= ZERO_VECTOR3 then
+		if localMoveVector ~= Vector3.zero then
 			local throttle = -localMoveVector.Z
 			return throttle
 		else
@@ -10095,7 +10078,7 @@ local REQUIRE_VehicleController = (function()
 	end
 	
 	function VehicleController:ComputeSteer(localMoveVector)
-		if localMoveVector ~= ZERO_VECTOR3 then
+		if localMoveVector ~= Vector3.zero then
 			local steerAngle = -math.atan2(-localMoveVector.x, -localMoveVector.z) * (180 / math.pi)
 			return steerAngle / self.autoPilot.MaxSteeringAngle
 		else
