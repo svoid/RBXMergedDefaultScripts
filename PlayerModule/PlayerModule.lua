@@ -9891,16 +9891,23 @@ local REQUIRE_VRNavigation = (function()
 	
 end)()
 
-local REQUIRE_VehicleController = (function()
---[[
-	// FileName: VehicleControl
-	// Version 1.0
-	// Written by: jmargh
-	// Description: Implements in-game vehicle controls for all input devices
 
-	// NOTE: This works for basic vehicles (single vehicle seat). If you use custom VehicleSeat code,
-	// multiple VehicleSeats or your own implementation of a VehicleSeat this will not work.
---]]
+	
+local VehicleController = {} do
+	VehicleController.__index = VehicleController
+		
+	-- Note that VehicleController does not derive from BaseCharacterController, it is a special case
+	
+	--[[
+		// FileName: VehicleControl
+		// Version 1.0
+		// Written by: jmargh
+		// Description: Implements in-game vehicle controls for all input devices
+
+		// NOTE: This works for basic vehicles (single vehicle seat). If you use custom VehicleSeat code,
+		// multiple VehicleSeats or your own implementation of a VehicleSeat this will not work.
+	--]]
+	
 	local ContextActionService = game:GetService("ContextActionService")
 	
 	--[[ Constants ]]--
@@ -9910,11 +9917,6 @@ local REQUIRE_VehicleController = (function()
 	local onlyTriggersForThrottle = false
 	
 	local AUTO_PILOT_DEFAULT_MAX_STEERING_ANGLE = 35
-	
-	
-	-- Note that VehicleController does not derive from BaseCharacterController, it is a special case
-	local VehicleController = {}
-	VehicleController.__index = VehicleController
 	
 	function VehicleController.new(CONTROL_ACTION_PRIORITY)
 		local self = setmetatable({}, VehicleController)
@@ -10078,9 +10080,7 @@ local REQUIRE_VehicleController = (function()
 		-- Or allow developer to set them through the API as like the CLickToMove customization API
 	end
 	
-	return VehicleController
-	
-end)()
+end
 
 
 local ControlModule = {} do
@@ -10117,8 +10117,6 @@ local ControlModule = {} do
 	
 	-- ClickToMove, VehicleController controllers handle only walk/run movement, jumping is handled by the
 	-- TouchJump controller if any of these are active
-	
-	local VehicleController = REQUIRE_VehicleController
 	
 	local CONTROL_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
 	
