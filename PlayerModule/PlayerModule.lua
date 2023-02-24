@@ -2759,11 +2759,14 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 	
 end
 
-local REQUIRE_Invisicam = (function()
---[[
-	Invisicam - Occlusion module that makes objects occluding character view semi-transparent
-	2018 Camera Update - AllYourBlox
---]]
+
+local Invisicam = setmetatable({}, BaseOcclusion) do
+	Invisicam.__index = Invisicam
+	
+	--[[
+		Invisicam - Occlusion module that makes objects occluding character view semi-transparent
+		2018 Camera Update - AllYourBlox
+	--]]
 	
 	--[[ Top Level Roblox Services ]]--
 	local PlayersService = game:GetService("Players")
@@ -2861,12 +2864,6 @@ local REQUIRE_Invisicam = (function()
 			return Vector3.zero
 		end
 	end
-	
-	
-	
-	--[[ The Module ]]--
-	local Invisicam = setmetatable({}, BaseOcclusion)
-	Invisicam.__index = Invisicam
 	
 	function Invisicam.new()
 		local self = setmetatable(BaseOcclusion.new(), Invisicam)
@@ -3309,15 +3306,15 @@ local REQUIRE_Invisicam = (function()
 		return desiredCameraCFrame, desiredCameraFocus
 	end
 	
-	return Invisicam
-	
-end)()
+end
 
-local REQUIRE_LegacyCamera = (function()
---[[
-	LegacyCamera - Implements legacy controller types: Attach, Fixed, Watch
-	2018 Camera Update - AllYourBlox
---]]
+local LegacyCamera = setmetatable({}, BaseCamera) do
+	LegacyCamera.__index = LegacyCamera
+	
+	--[[
+		LegacyCamera - Implements legacy controller types: Attach, Fixed, Watch
+		2018 Camera Update - AllYourBlox
+	--]]
 	
 	local PITCH_LIMIT = math.rad(80)
 	
@@ -3327,8 +3324,6 @@ local REQUIRE_LegacyCamera = (function()
 	local PlayersService = game:GetService('Players')
 	
 	--[[ The Module ]]--
-	local LegacyCamera = setmetatable({}, BaseCamera)
-	LegacyCamera.__index = LegacyCamera
 	
 	function LegacyCamera.new()
 		local self = setmetatable(BaseCamera.new(), LegacyCamera)
@@ -3425,15 +3420,16 @@ local REQUIRE_LegacyCamera = (function()
 		return newCameraCFrame, newCameraFocus
 	end
 	
-	return LegacyCamera
-	
-end)()
+end
 
-local REQUIRE_MouseLockController = (function()
---[[
-	MouseLockController - Replacement for ShiftLockController, manages use of mouse-locked mode
-	2018 Camera Update - AllYourBlox
---]]
+
+local MouseLockController = {} do
+	MouseLockController.__index = MouseLockController
+	
+	--[[
+		MouseLockController - Replacement for ShiftLockController, manages use of mouse-locked mode
+		2018 Camera Update - AllYourBlox
+	--]]
 	
 	--[[ Constants ]]--
 	local DEFAULT_MOUSE_LOCK_CURSOR = "rbxasset://textures/MouseLockedCursor.png"
@@ -3449,10 +3445,6 @@ local REQUIRE_MouseLockController = (function()
 	
 	--[[ Imports ]]
 	local CameraUtils = CameraUtils
-	
-	--[[ The Module ]]--
-	local MouseLockController = {}
-	MouseLockController.__index = MouseLockController
 	
 	function MouseLockController.new()
 		local self = setmetatable({}, MouseLockController)
@@ -3638,15 +3630,16 @@ local REQUIRE_MouseLockController = (function()
 		end
 	end
 	
-	return MouseLockController
-	
-end)()
+end
 
-local REQUIRE_OrbitalCamera = (function()
---[[
-	OrbitalCamera - Spherical coordinates control camera for top-down games
-	2018 Camera Update - AllYourBlox
---]]
+
+local OrbitalCamera = setmetatable({}, BaseCamera) do
+	OrbitalCamera.__index = OrbitalCamera
+	
+	--[[
+		OrbitalCamera - Spherical coordinates control camera for top-down games
+		2018 Camera Update - AllYourBlox
+	--]]
 	
 	-- Local private variables and constants
 	local UNIT_Z = Vector3.new(0,0,1)
@@ -3675,10 +3668,6 @@ local REQUIRE_OrbitalCamera = (function()
 	--[[ Services ]]--
 	local PlayersService = game:GetService('Players')
 	local VRService = game:GetService("VRService")
-	
-	--[[ The Module ]]--
-	local OrbitalCamera = setmetatable({}, BaseCamera)
-	OrbitalCamera.__index = OrbitalCamera
 	
 	
 	function OrbitalCamera.new()
@@ -3944,14 +3933,15 @@ local REQUIRE_OrbitalCamera = (function()
 		return newCameraCFrame, newCameraFocus
 	end
 	
-	return OrbitalCamera
-	
-end)()
+end
 
-local REQUIRE_Poppercam = (function()
---[[
-	Poppercam - Occlusion module that brings the camera closer to the subject when objects are blocking the view.
---]]
+
+local Poppercam = setmetatable({}, BaseOcclusion) do
+	Poppercam.__index = Poppercam
+	
+	--[[
+		Poppercam - Occlusion module that brings the camera closer to the subject when objects are blocking the view.
+	--]]
 	
 	local TransformExtrapolator = {} do
 		TransformExtrapolator.__index = TransformExtrapolator
@@ -4015,10 +4005,6 @@ local REQUIRE_Poppercam = (function()
 		end
 	end
 	
-	--[[ The Module ]]--
-	local Poppercam = setmetatable({}, BaseOcclusion)
-	Poppercam.__index = Poppercam
-	
 	function Poppercam.new()
 		local self = setmetatable(BaseOcclusion.new(), Poppercam)
 		self.focusExtrapolator = TransformExtrapolator.new()
@@ -4056,22 +4042,19 @@ local REQUIRE_Poppercam = (function()
 	function Poppercam:OnCameraSubjectChanged(newSubject)
 	end
 	
-	return Poppercam
-	
-end)()
+end
 
-local REQUIRE_TransparencyController = (function()
---[[
-	TransparencyController - Manages transparency of player character at close camera-to-subject distances
-	2018 Camera Update - AllYourBlox
---]]
+local TransparencyController = {} do
+	TransparencyController.__index = TransparencyController
+	
+	--[[
+		TransparencyController - Manages transparency of player character at close camera-to-subject distances
+		2018 Camera Update - AllYourBlox
+	--]]
+	
 	local MAX_TWEEN_RATE = 2.8 -- per second
 	
 	local Util = CameraUtils
-	
-	--[[ The Module ]]--
-	local TransparencyController = {}
-	TransparencyController.__index = TransparencyController
 	
 	function TransparencyController.new()
 		local self = setmetatable({}, TransparencyController)
@@ -4238,15 +4221,16 @@ local REQUIRE_TransparencyController = (function()
 		end
 	end
 	
-	return TransparencyController
-	
-end)()
+end
 
-local REQUIRE_VRBaseCamera = (function()
---[[
-	VRBaseCamera - Base class for VR camera
-	2021 Roblox VR
---]]
+
+local VRBaseCamera = setmetatable({}, BaseCamera) do
+	VRBaseCamera.__index = VRBaseCamera
+	
+	--[[
+		VRBaseCamera - Base class for VR camera
+		2021 Roblox VR
+	--]]
 	
 	--[[ Local Constants ]]--
 	local VR_ANGLE = math.rad(15)
@@ -4268,10 +4252,6 @@ local REQUIRE_VRBaseCamera = (function()
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
-	
-	--[[ The Module ]]--
-	local VRBaseCamera = setmetatable({}, BaseCamera)
-	VRBaseCamera.__index = VRBaseCamera
 	
 	function VRBaseCamera.new()
 		local self = setmetatable(BaseCamera.new(), VRBaseCamera)
@@ -4586,20 +4566,16 @@ local REQUIRE_VRBaseCamera = (function()
 		return result
 	end
 	
-	-----------------------------
-	
-	return VRBaseCamera
-	
-end)()
+end
 
 
-local REQUIRE_ControlModule
+local VRCamera = setmetatable({}, VRBaseCamera) do
+	VRCamera.__index = VRCamera
 
-local REQUIRE_VRCamera = (function()
---[[
-	VRCamera - Roblox VR camera control module
-	2021 Roblox VR
---]]
+	--[[
+		VRCamera - Roblox VR camera control module
+		2021 Roblox VR
+	--]]
 	
 	--[[ Services ]]--
 	local PlayersService = game:GetService("Players")
@@ -4612,11 +4588,6 @@ local REQUIRE_VRCamera = (function()
 	
 	-- requires
 	local Util = CameraUtils
-	
-	--[[ The Module ]]--
-	local VRBaseCamera = REQUIRE_VRBaseCamera
-	local VRCamera = setmetatable({}, VRBaseCamera)
-	VRCamera.__index = VRCamera
 	
 	local FFlagUserFlagEnableVRUpdate3 = getFastFlag("UserFlagEnableVRUpdate3")
 	
@@ -4867,78 +4838,72 @@ local REQUIRE_VRCamera = (function()
 		end
 	end
 	
-	return VRCamera
-	
-end)()
+end
 
 
-local REQUIRE_VehicleCameraConfig = (function()
-	local VEHICLE_CAMERA_CONFIG = {
-		-- (hz) Camera response stiffness along the pitch axis
-		pitchStiffness = 0.5,
-		
-		-- (hz) Camera response stiffness along the yaw axis
-		yawStiffness = 2.5,
-		
-		-- (s) Delay after use input before the camera can begin autorotating
-		autocorrectDelay = 1,
-		
-		-- (studs/s) Minimum vehicle speed before the autocorrect begins to activate
-		autocorrectMinCarSpeed = 16,
-		
-		-- (studs/s) Vehicle speed where autocorrect is fully activated
-		autocorrectMaxCarSpeed = 32,
-		
-		-- (hz) Autocorrect stiffness/speed
-		autocorrectResponse = 0.5,
-		
-		-- (deg/s) Minimum angular yaw velocity before the camera rotation cutoff begins
-		cutoffMinAngularVelYaw = 60,
-		
-		-- (deg/s) Maximum angular yaw velocity where the camera rotation cutoff is fully activated
-		cutoffMaxAngularVelYaw = 180,
-		
-		-- (deg/s) Minimum angular pitch velocity before the camera rotation cutoff begins
-		cutoffMinAngularVelPitch = 15,
-		
-		-- (deg/s) Maximum angular pitch velocity where the camera rotation cutoff is fully activated
-		cutoffMaxAngularVelPitch = 60,
-		
-		-- (deg) Default pitch angle relative to the horizon
-		pitchBaseAngle = 18,
-		
-		-- (deg) Half-size of the deadzone angle for pitch autocorrect
-		pitchDeadzoneAngle = 12,
-		
-		-- (unitless) Multiplier for camera response stiffness in first-person mode
-		firstPersonResponseMul = 10,
-		
-		-- (hz) Responsiveness of yaw cutoff to rising angular velocities
-		yawReponseDampingRising = 1,
-		
-		-- (hz) Responsiveness of yaw cutoff to falling angular velocities
-		yawResponseDampingFalling = 3,
-		
-		-- (hz) Responsiveness of pitch cutoff to rising angular velocities
-		pitchReponseDampingRising = 1,
-		
-		-- (hz) Responsiveness of pitch cutoff to falling angular velocities
-		pitchResponseDampingFalling = 3,
-		
-		-- (unitless) Initial zoom radius as a fraction of car radius
-		initialZoomRadiusMul = 3,
-		
-		-- (unitless) Vertical third-person camera offset as a fraction of car radius
-		verticalCenterOffset = 0.33,
-	}
+local VEHICLE_CAMERA_CONFIG = {
+	-- (hz) Camera response stiffness along the pitch axis
+	pitchStiffness = 0.5,
 	
-	return VEHICLE_CAMERA_CONFIG
+	-- (hz) Camera response stiffness along the yaw axis
+	yawStiffness = 2.5,
 	
-end)()
+	-- (s) Delay after use input before the camera can begin autorotating
+	autocorrectDelay = 1,
+	
+	-- (studs/s) Minimum vehicle speed before the autocorrect begins to activate
+	autocorrectMinCarSpeed = 16,
+	
+	-- (studs/s) Vehicle speed where autocorrect is fully activated
+	autocorrectMaxCarSpeed = 32,
+	
+	-- (hz) Autocorrect stiffness/speed
+	autocorrectResponse = 0.5,
+	
+	-- (deg/s) Minimum angular yaw velocity before the camera rotation cutoff begins
+	cutoffMinAngularVelYaw = 60,
+	
+	-- (deg/s) Maximum angular yaw velocity where the camera rotation cutoff is fully activated
+	cutoffMaxAngularVelYaw = 180,
+	
+	-- (deg/s) Minimum angular pitch velocity before the camera rotation cutoff begins
+	cutoffMinAngularVelPitch = 15,
+	
+	-- (deg/s) Maximum angular pitch velocity where the camera rotation cutoff is fully activated
+	cutoffMaxAngularVelPitch = 60,
+	
+	-- (deg) Default pitch angle relative to the horizon
+	pitchBaseAngle = 18,
+	
+	-- (deg) Half-size of the deadzone angle for pitch autocorrect
+	pitchDeadzoneAngle = 12,
+	
+	-- (unitless) Multiplier for camera response stiffness in first-person mode
+	firstPersonResponseMul = 10,
+	
+	-- (hz) Responsiveness of yaw cutoff to rising angular velocities
+	yawReponseDampingRising = 1,
+	
+	-- (hz) Responsiveness of yaw cutoff to falling angular velocities
+	yawResponseDampingFalling = 3,
+	
+	-- (hz) Responsiveness of pitch cutoff to rising angular velocities
+	pitchReponseDampingRising = 1,
+	
+	-- (hz) Responsiveness of pitch cutoff to falling angular velocities
+	pitchResponseDampingFalling = 3,
+	
+	-- (unitless) Initial zoom radius as a fraction of car radius
+	initialZoomRadiusMul = 3,
+	
+	-- (unitless) Vertical third-person camera offset as a fraction of car radius
+	verticalCenterOffset = 0.33,
+}
 
-local REQUIRE_VehicleCameraCore = (function()
+
+local VehicleCameraCore do
 	local CameraUtils = CameraUtils
-	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
+	local VehicleCameraConfig = VEHICLE_CAMERA_CONFIG
 	
 	local map = CameraUtils.map
 	local mapClamp = CameraUtils.mapClamp
@@ -5099,7 +5064,7 @@ local REQUIRE_VehicleCameraCore = (function()
 		end
 	end
 	
-	local VehicleCameraCore = {} do
+	VehicleCameraCore = {} do
 		VehicleCameraCore.__index = VehicleCameraCore
 		
 		function VehicleCameraCore.new(transform)
@@ -5117,11 +5082,11 @@ local REQUIRE_VehicleCameraCore = (function()
 		end
 	end
 	
-	return VehicleCameraCore
-	
-end)()
+end
 
-local REQUIRE_VehicleCamera = (function()
+local VehicleCamera = setmetatable({}, BaseCamera) do
+	VehicleCamera.__index = VehicleCamera
+
 	local EPSILON = 1e-3
 	local PITCH_LIMIT = math.rad(80)
 	local YAW_DEFAULT = math.rad(0)
@@ -5132,8 +5097,7 @@ local REQUIRE_VehicleCamera = (function()
 	local RunService = game:GetService("RunService")
 	
 	local CameraUtils = CameraUtils
-	local VehicleCameraCore = REQUIRE_VehicleCameraCore
-	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
+	local VehicleCameraConfig = VEHICLE_CAMERA_CONFIG
 	
 	local localPlayer = Players.LocalPlayer
 	
@@ -5157,9 +5121,6 @@ local REQUIRE_VehicleCamera = (function()
 	RunService.Stepped:Connect(function(_, _worldDt)
 		worldDt = _worldDt
 	end)
-	
-	local VehicleCamera = setmetatable({}, BaseCamera)
-	VehicleCamera.__index = VehicleCamera
 	
 	function VehicleCamera.new()
 		local self = setmetatable(BaseCamera.new(), VehicleCamera)
@@ -5338,15 +5299,15 @@ local REQUIRE_VehicleCamera = (function()
 		self:UpdateMouseBehavior()
 	end
 	
-	return VehicleCamera
-	
-end)()
+end
 
-local REQUIRE_VRVehicleCamera = (function()
---[[
-	VRVehicleCamera - Roblox VR vehicle camera control module
-	2021 Roblox VR
---]]
+local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
+	VRVehicleCamera.__index = VRVehicleCamera
+	
+	--[[
+		VRVehicleCamera - Roblox VR vehicle camera control module
+		2021 Roblox VR
+	--]]
 	
 	local EPSILON = 1e-3
 	local PITCH_LIMIT = math.rad(80)
@@ -5357,11 +5318,8 @@ local REQUIRE_VRVehicleCamera = (function()
 	local TP_FOLLOW_DIST = 200
 	local TP_FOLLOW_ANGLE_DOT = 0.56
 	
-	local VRBaseCamera = REQUIRE_VRBaseCamera
 	local CameraUtils = CameraUtils
-	local VehicleCamera = REQUIRE_VehicleCamera
-	local VehicleCameraCore =  REQUIRE_VehicleCameraCore
-	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
+	local VehicleCameraConfig = VEHICLE_CAMERA_CONFIG
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local VRService = game:GetService("VRService")
@@ -5382,8 +5340,6 @@ local REQUIRE_VRVehicleCamera = (function()
 	end
 	
 	local worldDt = 1/60
-	local VRVehicleCamera = setmetatable({}, VRBaseCamera)
-	VRVehicleCamera.__index = VRVehicleCamera
 	
 	function VRVehicleCamera.new()
 		local self = setmetatable(VRBaseCamera.new(), VRVehicleCamera)
@@ -5550,9 +5506,7 @@ local REQUIRE_VRVehicleCamera = (function()
 		self:UpdateMouseBehavior()
 	end
 	
-	return VRVehicleCamera
-	
-end)()
+end
 
 
 
@@ -5613,22 +5567,6 @@ local CameraModule = {} do
 
 	-- Static camera utils
 	local CameraUtils = CameraUtils
-
-	-- Load Roblox Camera Controller Modules
-	local OrbitalCamera = REQUIRE_OrbitalCamera
-	local LegacyCamera = REQUIRE_LegacyCamera
-	local VehicleCamera = REQUIRE_VehicleCamera
-	-- New VR System Modules
-	local VRCamera = REQUIRE_VRCamera
-	local VRVehicleCamera = REQUIRE_VRVehicleCamera
-
-	-- Load Roblox Occlusion Modules
-	local Invisicam = REQUIRE_Invisicam
-	local Poppercam = REQUIRE_Poppercam
-
-	-- Load the near-field character transparency controller and the mouse lock "shift lock" controller
-	local TransparencyController = REQUIRE_TransparencyController
-	local MouseLockController = REQUIRE_MouseLockController
 
 	-- Table of camera controllers that have been instantiated. They are instantiated as they are used.
 	local instantiatedCameraControllers = {}
