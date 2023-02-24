@@ -8686,24 +8686,22 @@ local REQUIRE_DynamicThumbstick = (function()
 	
 end)()
 
-local REQUIRE_Gamepad = (function()
---[[
-	Gamepad Character Control - This module handles controlling your avatar using a game console-style controller
 
-	2018 PlayerScripts Update - AllYourBlox
---]]
+local Gamepad = setmetatable({}, BaseCharacterController) do
+	Gamepad.__index = Gamepad
+	
+	--[[
+		Gamepad Character Control - This module handles controlling your avatar using a game console-style controller
+
+		2018 PlayerScripts Update - AllYourBlox
+	--]]
 	
 	local UserInputService = game:GetService("UserInputService")
 	local ContextActionService = game:GetService("ContextActionService")
 	
-	--[[ Constants ]]--
 	local NONE = Enum.UserInputType.None
 	local thumbstickDeadzone = 0.2
-	
-	--[[ The Module ]]--
-	local Gamepad = setmetatable({}, BaseCharacterController)
-	Gamepad.__index = Gamepad
-	
+		
 	function Gamepad.new(CONTROL_ACTION_PRIORITY)
 		local self = setmetatable(BaseCharacterController.new() :: any, Gamepad)
 		
@@ -8897,9 +8895,7 @@ local REQUIRE_Gamepad = (function()
 		end
 	end
 	
-	return Gamepad
-	
-end)()
+end
 
 
 local REQUIRE_PathDisplay = (function()
@@ -10117,7 +10113,6 @@ REQUIRE_ControlModule = (function()
 	local VRService = game:GetService("VRService")
 	
 	-- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
-	local Gamepad = REQUIRE_Gamepad
 	local DynamicThumbstick = REQUIRE_DynamicThumbstick
 	
 	local FFlagUserHideControlsWhenMenuOpen = getFastFlag("UserHideControlsWhenMenuOpen")
