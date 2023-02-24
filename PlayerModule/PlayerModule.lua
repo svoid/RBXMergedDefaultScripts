@@ -322,10 +322,6 @@ local Popper do
 	
 	local camera = workspace.CurrentCamera
 	
-	local min = math.min
-	local tan = math.tan
-	local rad = math.rad
-	local inf = math.huge
 	local ray = Ray.new
 	
 	local function getTotalTransparency(part)
@@ -340,11 +336,11 @@ local Popper do
 	
 	local nearPlaneZ, projX, projY do
 		local function updateProjection()
-			local fov = rad(camera.FieldOfView)
+			local fov = math.rad(camera.FieldOfView)
 			local view = camera.ViewportSize
 			local ar = view.X/view.Y
 			
-			projY = 2*tan(fov/2)
+			projY = 2*math.tan(fov/2)
 			projX = ar*projY
 		end
 		
@@ -491,8 +487,8 @@ local Popper do
 		dist = dist + nearPlaneZ
 		local target = origin + unitDir*dist
 		
-		local softLimit = inf
-		local hardLimit = inf
+		local softLimit = math.huge
+		local hardLimit = math.huge
 		local movingOrigin = origin
 		
 		local numPierced = 0
@@ -535,7 +531,7 @@ local Popper do
 				blacklist[#blacklist + 1] = entryPart
 				movingOrigin = entryPos - unitDir*1e-3
 			end
-		until hardLimit < inf or not entryPart
+		until hardLimit < math.huge or not entryPart
 		
 		eraseFromEnd(blacklist, originalSize)
 		
@@ -553,8 +549,8 @@ local Popper do
 		
 		local viewport = camera.ViewportSize
 		
-		local hardBoxLimit = inf
-		local softBoxLimit = inf
+		local hardBoxLimit = math.huge
+		local softBoxLimit = math.huge
 		
 		-- Center the viewport on the PoI, sweep points on the edge towards the target, and take the minimum limits
 		for viewX = 0, 1 do
@@ -603,7 +599,7 @@ local Popper do
 			-- Metric that decides how many samples to take
 			local combinedSpeed = focusExtrapolation.posVelocity.magnitude
 			
-			for dt = 0, min(SAMPLE_MAX_T, focusExtrapolation.rotVelocity.magnitude + maxDist/combinedSpeed), SAMPLE_DT do
+			for dt = 0, math.min(SAMPLE_MAX_T, focusExtrapolation.rotVelocity.magnitude + maxDist/combinedSpeed), SAMPLE_DT do
 				local cfDt = focusExtrapolation.extrapolate(dt) -- Extrapolated CFrame at time dt
 				
 				if queryPoint(cfDt.p, -cfDt.lookVector, dist) >= dist then
@@ -621,7 +617,7 @@ local Popper do
 			for _, offset in ipairs(SCAN_SAMPLE_OFFSETS) do
 				local scaledOffset = offset
 				local pos = getCollisionPoint(fP, fX*scaledOffset.x + fY*scaledOffset.y)
-				if queryPoint(pos, (fP + fZ*dist - pos).Unit, dist) == inf then
+				if queryPoint(pos, (fP + fZ*dist - pos).Unit, dist) == math.huge then
 					return false
 				end
 			end
@@ -666,12 +662,6 @@ local ZoomController = {} do
 	local MIN_FOCUS_DIST = 0.5
 	local DIST_OPAQUE = 1
 	
-	local clamp = math.clamp
-	local exp = math.exp
-	local min = math.min
-	local max = math.max
-	local pi = math.pi
-	
 	local cameraMinZoomDistance, cameraMaxZoomDistance do
 		
 		local function updateBounds()
@@ -689,7 +679,7 @@ local ZoomController = {} do
 		ConstrainedSpring.__index = ConstrainedSpring
 		
 		function ConstrainedSpring.new(freq: number, x: number, minValue: number, maxValue: number)
-			x = clamp(x, minValue, maxValue)
+			x = math.clamp(x, minValue, maxValue)
 			return setmetatable({
 				freq = freq, -- Undamped frequency (Hz)
 				x = x, -- Current position
@@ -701,7 +691,7 @@ local ZoomController = {} do
 		end
 		
 		function ConstrainedSpring:Step(dt: number)
-			local freq = self.freq :: number * 2 * pi -- Convert from Hz to rad/s
+			local freq = self.freq :: number * 2 * math.pi -- Convert from Hz to rad/s
 			local x: number = self.x
 			local v: number = self.v
 			local minValue: number = self.minValue
@@ -715,7 +705,7 @@ local ZoomController = {} do
 			
 			local offset = goal - x
 			local step = freq*dt
-			local decay = exp(-step)
+			local decay = math.exp(-step)
 			
 			local x1 = goal + (v*dt - offset*(step + 1))*decay
 			local v1 = ((offset*freq - v)*step + v)*decay
@@ -739,7 +729,7 @@ local ZoomController = {} do
 	local zoomSpring = ConstrainedSpring.new(ZOOM_STIFFNESS, ZOOM_DEFAULT, MIN_FOCUS_DIST, cameraMaxZoomDistance)
 	
 	local function stepTargetZoom(z: number, dz: number, zoomMin: number, zoomMax: number)
-		z = clamp(z + dz*(1 + z*ZOOM_ACCELERATION), zoomMin, zoomMax)
+		z = math.clamp(z + dz*(1 + z*ZOOM_ACCELERATION), zoomMin, zoomMax)
 		if z < DIST_OPAQUE then
 			z = dz <= 0 and zoomMin or DIST_OPAQUE
 		end
@@ -753,7 +743,7 @@ local ZoomController = {} do
 		
 		if zoomSpring.goal > DIST_OPAQUE then
 			-- Make a pessimistic estimate of zoom distance for this step without accounting for poppercam
-			local maxPossibleZoom = max(
+			local maxPossibleZoom = math.max(
 				zoomSpring.x,
 				stepTargetZoom(zoomSpring.goal, zoomDelta, cameraMinZoomDistance, cameraMaxZoomDistance)
 			)
@@ -767,7 +757,7 @@ local ZoomController = {} do
 		end
 		
 		zoomSpring.minValue = MIN_FOCUS_DIST
-		zoomSpring.maxValue = min(cameraMaxZoomDistance, poppedZoom)
+		zoomSpring.maxValue = math.min(cameraMaxZoomDistance, poppedZoom)
 		
 		return zoomSpring:Step(renderDt)
 	end
