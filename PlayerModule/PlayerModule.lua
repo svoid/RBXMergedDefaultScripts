@@ -11,6 +11,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
 
+local localPlayer = Players.LocalPlayer
+
 local CameraUtils = {} do
 	--[[
 		CameraUtils - Math utility functions shared by multiple camera scripts
@@ -248,12 +250,6 @@ local CameraUtils = {} do
 	end
 	
 	local function getMouse()
-		local localPlayer = Players.LocalPlayer
-		if not localPlayer then
-			Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-			localPlayer = Players.LocalPlayer
-		end
-		assert(localPlayer)
 		return localPlayer:GetMouse()
 	end
 	
@@ -677,18 +673,16 @@ local ZoomController = {} do
 	local pi = math.pi
 	
 	local cameraMinZoomDistance, cameraMaxZoomDistance do
-		local Player = Players.LocalPlayer
-		assert(Player)
 		
 		local function updateBounds()
-			cameraMinZoomDistance = Player.CameraMinZoomDistance
-			cameraMaxZoomDistance = Player.CameraMaxZoomDistance
+			cameraMinZoomDistance = localPlayer.CameraMinZoomDistance
+			cameraMaxZoomDistance = localPlayer.CameraMaxZoomDistance
 		end
 		
 		updateBounds()
 		
-		Player:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(updateBounds)
-		Player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(updateBounds)
+		localPlayer:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(updateBounds)
+		localPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(updateBounds)
 	end
 	
 	local ConstrainedSpring = {} do
@@ -804,8 +798,6 @@ local CameraInput = {} do
 	local VRService = game:GetService("VRService")
 	local StarterGui = game:GetService("StarterGui")
 	
-	local player = Players.LocalPlayer
-	
 	local CAMERA_INPUT_PRIORITY = Enum.ContextActionPriority.Default.Value
 	local MB_TAP_LENGTH = 0.3 -- (s) length of time for a short mouse button tap to be registered
 	
@@ -889,7 +881,7 @@ local CameraInput = {} do
 	end
 	
 	local function isInDynamicThumbstickArea(pos: Vector3): boolean
-		local playerGui = player:FindFirstChildOfClass("PlayerGui")
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 		local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
 		local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
 		local thumbstickFrame = touchFrame and touchFrame:FindFirstChild("DynamicThumbstickFrame")
@@ -1359,12 +1351,6 @@ local CameraUI: any = {} do
 	
 	local FFlagUserEnableCameraToggleNotification = getFastFlag("UserEnableCameraToggleNotification")
 	
-	local LocalPlayer = Players.LocalPlayer
-	if not LocalPlayer then
-		Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-		LocalPlayer = Players.LocalPlayer
-	end
-	
 	local function waitForChildOfClass(parent: Instance, class: string)
 		local child = parent:FindFirstChildOfClass(class)
 		while not child or child.ClassName ~= class do
@@ -1373,7 +1359,7 @@ local CameraUI: any = {} do
 		return child
 	end
 	
-	local PlayerGui = waitForChildOfClass(LocalPlayer, "PlayerGui")
+	local PlayerGui = waitForChildOfClass(localPlayer, "PlayerGui")
 	
 	local TOAST_OPEN_SIZE = UDim2.new(0, 326, 0, 58)
 	local TOAST_CLOSED_SIZE = UDim2.new(0, 80, 0, 58)
@@ -1694,8 +1680,6 @@ local BaseCamera = {} do
 	local VRService = game:GetService("VRService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
-	local player = Players.LocalPlayer
-	
 	function BaseCamera.new()
 		local self = setmetatable({}, BaseCamera)
 		
@@ -1720,8 +1704,8 @@ local BaseCamera = {} do
 		-- is trying to maintain, not the actual measured value.
 		-- The default is updated when screen orientation or the min/max distances change,
 		-- to be sure the default is always in range and appropriate for the orientation.
-		self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
-		self.currentSubjectDistance = math.clamp(DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+		self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+		self.currentSubjectDistance = math.clamp(DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
 		
 		self.inFirstPerson = false
 		self.inMouseLockedMode = false
@@ -1760,11 +1744,11 @@ local BaseCamera = {} do
 		-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
 		-- when needed, so the code here may run well after the start of the game
 		
-		if player.Character then
-			self:OnCharacterAdded(player.Character)
+		if localPlayer.Character then
+			self:OnCharacterAdded(localPlayer.Character)
 		end
 		
-		player.CharacterAdded:Connect(function(char)
+		localPlayer.CharacterAdded:Connect(function(char)
 			self:OnCharacterAdded(char)
 		end)
 		
@@ -1775,22 +1759,22 @@ local BaseCamera = {} do
 		self:OnCurrentCameraChanged()
 		
 		if self.playerCameraModeChangeConn then self.playerCameraModeChangeConn:Disconnect() end
-		self.playerCameraModeChangeConn = player:GetPropertyChangedSignal("CameraMode"):Connect(function()
+		self.playerCameraModeChangeConn = localPlayer:GetPropertyChangedSignal("CameraMode"):Connect(function()
 			self:OnPlayerCameraPropertyChange()
 		end)
 		
 		if self.minDistanceChangeConn then self.minDistanceChangeConn:Disconnect() end
-		self.minDistanceChangeConn = player:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
+		self.minDistanceChangeConn = localPlayer:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
 			self:OnPlayerCameraPropertyChange()
 		end)
 		
 		if self.maxDistanceChangeConn then self.maxDistanceChangeConn:Disconnect() end
-		self.maxDistanceChangeConn = player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
+		self.maxDistanceChangeConn = localPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
 			self:OnPlayerCameraPropertyChange()
 		end)
 		
 		if self.playerDevTouchMoveModeChangeConn then self.playerDevTouchMoveModeChangeConn:Disconnect() end
-		self.playerDevTouchMoveModeChangeConn = player:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
+		self.playerDevTouchMoveModeChangeConn = localPlayer:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
 			self:OnDevTouchMovementModeChanged()
 		end)
 		self:OnDevTouchMovementModeChanged() -- Init
@@ -1826,7 +1810,7 @@ local BaseCamera = {} do
 		self.resetCameraAngle = self.resetCameraAngle or self:GetEnabled()
 		self.humanoidRootPart = nil
 		if UserInputService.TouchEnabled then
-			self.PlayerGui = player:WaitForChild("PlayerGui")
+			self.PlayerGui = localPlayer:WaitForChild("PlayerGui")
 			for _, child in ipairs(char:GetChildren()) do
 				if child:IsA("Tool") then
 					self.isAToolEquipped = true
@@ -1847,8 +1831,8 @@ local BaseCamera = {} do
 	
 	function BaseCamera:GetHumanoidRootPart(): BasePart
 		if not self.humanoidRootPart then
-			if player.Character then
-				local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+			if localPlayer.Character then
+				local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
 				if humanoid then
 					self.humanoidRootPart = humanoid.RootPart
 				end
@@ -2090,9 +2074,9 @@ local BaseCamera = {} do
 	
 	function BaseCamera:UpdateDefaultSubjectDistance()
 		if self.portraitMode then
-			self.defaultSubjectDistance = math.clamp(PORTRAIT_DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+			self.defaultSubjectDistance = math.clamp(PORTRAIT_DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
 		else
-			self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+			self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
 		end
 	end
 	
@@ -2149,7 +2133,7 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:OnGameSettingsTouchMovementModeChanged()
-		if player.DevTouchMovementMode == Enum.DevTouchMovementMode.UserChoice then
+		if localPlayer.DevTouchMovementMode == Enum.DevTouchMovementMode.UserChoice then
 			if (UserGameSettings.TouchMovementMode == Enum.TouchMovementMode.DynamicThumbstick
 				or UserGameSettings.TouchMovementMode == Enum.TouchMovementMode.Default) then
 				self:OnDynamicThumbstickEnabled()
@@ -2160,7 +2144,7 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:OnDevTouchMovementModeChanged()
-		if player.DevTouchMovementMode == Enum.DevTouchMovementMode.DynamicThumbstick then
+		if localPlayer.DevTouchMovementMode == Enum.DevTouchMovementMode.DynamicThumbstick then
 			self:OnDynamicThumbstickEnabled()
 		else
 			self:OnGameSettingsTouchMovementModeChanged()
@@ -2198,7 +2182,7 @@ local BaseCamera = {} do
 					self:GamepadZoomPress()
 				end)
 				
-				if player.CameraMode == Enum.CameraMode.LockFirstPerson then
+				if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
 					self.currentSubjectDistance = 0.5
 					if not self.inFirstPerson then
 						self:EnterFirstPerson()
@@ -2279,13 +2263,13 @@ local BaseCamera = {} do
 		-- regardless of what Player.CameraMinZoomDistance is set to, so that first person can be made
 		-- available by the developer without needing to allow players to mousewheel dolly into first person.
 		-- Some modules will override this function to remove or change first-person capability.
-		if player.CameraMode == Enum.CameraMode.LockFirstPerson then
+		if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
 			self.currentSubjectDistance = 0.5
 			if not self.inFirstPerson then
 				self:EnterFirstPerson()
 			end
 		else
-			local newSubjectDistance = math.clamp(desiredSubjectDistance, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+			local newSubjectDistance = math.clamp(desiredSubjectDistance, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
 			if newSubjectDistance < FIRST_PERSON_DISTANCE_THRESHOLD then
 				self.currentSubjectDistance = 0.5
 				if not self.inFirstPerson then
@@ -2398,16 +2382,16 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:GetHumanoid(): Humanoid?
-		local character = player and player.Character
+		local character = localPlayer.Character
 		if character then
-			local resultHumanoid = self.humanoidCache[player]
+			local resultHumanoid = self.humanoidCache[localPlayer]
 			if resultHumanoid and resultHumanoid.Parent == character then
 				return resultHumanoid
 			else
-				self.humanoidCache[player] = nil -- Bust Old Cache
+				self.humanoidCache[localPlayer] = nil -- Bust Old Cache
 				local humanoid = character:FindFirstChildOfClass("Humanoid")
 				if humanoid then
-					self.humanoidCache[player] = humanoid
+					self.humanoidCache[localPlayer] = humanoid
 				end
 				return humanoid
 			end
@@ -2582,7 +2566,6 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 			self.resetCameraAngle = false
 		end
 		
-		local player = Players.LocalPlayer
 		local humanoid = self:GetHumanoid()
 		local cameraSubject = camera.CameraSubject
 		local isInVehicle = cameraSubject and cameraSubject:IsA("VehicleSeat")
@@ -2608,7 +2591,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		local userRecentlyPannedCamera = now - self.lastUserPanCamera < TIME_BEFORE_AUTO_ROTATE
 		local subjectPosition: Vector3 = self:GetSubjectPosition()
 		
-		if subjectPosition and player and camera then
+		if subjectPosition and camera then
 			local zoom = self:GetCameraToSubjectDistance()
 			if zoom < 0.5 then
 				zoom = 0.5
@@ -3085,7 +3068,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	
 	function Invisicam:CharacterAdded(char: Model, player: Player)
 		-- We only want the LocalPlayer's character
-		if player~=Players.LocalPlayer then return end
+		if player ~= localPlayer then return end
 		
 		if self.childAddedConn then
 			self.childAddedConn:Disconnect()
@@ -3307,9 +3290,6 @@ local LegacyCamera = setmetatable({}, BaseCamera) do
 	
 	local Util = CameraUtils
 	
-	--[[ Services ]]--
-	local PlayersService = game:GetService('Players')
-	
 	--[[ The Module ]]--
 	
 	function LegacyCamera.new()
@@ -3343,7 +3323,6 @@ local LegacyCamera = setmetatable({}, BaseCamera) do
 		local camera = 	workspace.CurrentCamera
 		local newCameraCFrame = camera.CFrame
 		local newCameraFocus = camera.Focus
-		local player = PlayersService.LocalPlayer
 		
 		if self.lastUpdate == nil or timeDelta > 1 then
 			self.lastDistanceToSubject = nil
@@ -3351,7 +3330,7 @@ local LegacyCamera = setmetatable({}, BaseCamera) do
 		local subjectPosition: Vector3 = self:GetSubjectPosition()
 		
 		if self.cameraType == Enum.CameraType.Fixed then
-			if subjectPosition and player and camera then
+			if subjectPosition and localPlayer and camera then
 				local distanceToSubject = self:GetCameraToSubjectDistance()
 				local newLookVector = self:CalculateNewLookVectorFromArg(nil, CameraInput.getRotation())
 				
@@ -3370,7 +3349,7 @@ local LegacyCamera = setmetatable({}, BaseCamera) do
 			newCameraCFrame = newCameraFocus*CFrame.new(0, 0, self:StepZoom())
 			
 		elseif self.cameraType == Enum.CameraType.Watch then
-			if subjectPosition and player and camera then
+			if subjectPosition and localPlayer and camera then
 				local cameraLook = nil
 				
 				if subjectPosition == camera.CFrame.p then
@@ -3467,12 +3446,12 @@ local MouseLockController = {} do
 		end)
 		
 		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		Players.LocalPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
+		localPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
 			self:UpdateMouseLockAvailability()
 		end)
 		
 		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		Players.LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
+		localPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
 			self:UpdateMouseLockAvailability()
 		end)
 		
@@ -3513,8 +3492,8 @@ local MouseLockController = {} do
 	end
 	
 	function MouseLockController:UpdateMouseLockAvailability()
-		local devAllowsMouseLock = Players.LocalPlayer.DevEnableMouseLock
-		local devMovementModeIsScriptable = Players.LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
+		local devAllowsMouseLock = localPlayer.DevEnableMouseLock
+		local devMovementModeIsScriptable = localPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
 		local userHasMouseLockModeEnabled = GameSettings.ControlMode == Enum.ControlMode.MouseLockSwitch
 		local userHasClickToMoveEnabled =  GameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove
 		local MouseLockAvailable = devAllowsMouseLock and userHasMouseLockModeEnabled and not userHasClickToMoveEnabled and not devMovementModeIsScriptable
@@ -3646,7 +3625,6 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 	externalProperties["UseAzimuthLimits"] = false -- Full rotation around Y axis available by default
 	
 	--[[ Services ]]--
-	local PlayersService = game:GetService('Players')
 	local VRService = game:GetService("VRService")
 	
 	
@@ -3802,13 +3780,12 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 	end
 	
 	function OrbitalCamera:SetCameraToSubjectDistance(desiredSubjectDistance)
-		local player = PlayersService.LocalPlayer
-		if player then
-			self.currentSubjectDistance = math.clamp(desiredSubjectDistance, self.minDistance, self.maxDistance)
-			
-			-- OrbitalCamera is not allowed to go into the first-person range
-			self.currentSubjectDistance = math.max(self.currentSubjectDistance, self.FIRST_PERSON_DISTANCE_THRESHOLD)
-		end
+
+		self.currentSubjectDistance = math.clamp(desiredSubjectDistance, self.minDistance, self.maxDistance)
+		
+		-- OrbitalCamera is not allowed to go into the first-person range
+		self.currentSubjectDistance = math.max(self.currentSubjectDistance, self.FIRST_PERSON_DISTANCE_THRESHOLD)
+
 		self.inFirstPerson = false
 		self:UpdateMouseBehavior()
 		return self.currentSubjectDistance
@@ -3832,7 +3809,6 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		local camera = 	workspace.CurrentCamera
 		local newCameraCFrame = camera.CFrame
 		local newCameraFocus = camera.Focus
-		local player = PlayersService.LocalPlayer
 		local cameraSubject = camera and camera.CameraSubject
 		local isInVehicle = cameraSubject and cameraSubject:IsA('VehicleSeat')
 		local isOnASkateboard = cameraSubject and cameraSubject:IsA('SkateboardPlatform')
@@ -3848,7 +3824,7 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		
 		local subjectPosition = self:GetSubjectPosition()
 		
-		if subjectPosition and player and camera then
+		if subjectPosition and camera then
 			
 			-- Process any dollying being done by gamepad
 			-- TODO: Move this
@@ -4220,8 +4196,6 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	
 	local VRService = game:GetService("VRService")
 	
-	local player = Players.LocalPlayer
-	
 	local Lighting = game:GetService("Lighting")
 	local RunService = game:GetService("RunService")
 	
@@ -4234,8 +4208,8 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 		
 		-- distance is different in VR
 		self.defaultDistance = VR_ZOOM
-		self.defaultSubjectDistance = math.clamp(self.defaultDistance, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
-		self.currentSubjectDistance = math.clamp(self.defaultDistance, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+		self.defaultSubjectDistance = math.clamp(self.defaultDistance, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+		self.currentSubjectDistance = math.clamp(self.defaultDistance, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
 		
 		-- VR screen effect
 		self.VRFadeResetTimer = 0
@@ -4294,7 +4268,7 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 			
 			-- reset VR effects
 			self.VREdgeBlurTimer = 0
-			self:UpdateEdgeBlur(player, 1)
+			self:UpdateEdgeBlur(localPlayer, 1)
 			local VRFade = Lighting:FindFirstChild("VRFade")
 			if VRFade then
 				VRFade.Brightness = 0
@@ -4303,7 +4277,7 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	end
 	
 	function VRBaseCamera:UpdateDefaultSubjectDistance()
-		self.defaultSubjectDistance = math.clamp(VR_ZOOM, player.CameraMinZoomDistance, player.CameraMaxZoomDistance)
+		self.defaultSubjectDistance = math.clamp(VR_ZOOM, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
 	end
 	
 	-- Nominal distance, set by dollying in and out with the mouse wheel or equivalent, not measured distance
@@ -4315,7 +4289,7 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	function VRBaseCamera:SetCameraToSubjectDistance(desiredSubjectDistance: number): number
 		local lastSubjectDistance = self.currentSubjectDistance
 		
-		local newSubjectDistance = math.clamp(desiredSubjectDistance, 0, player.CameraMaxZoomDistance)
+		local newSubjectDistance = math.clamp(desiredSubjectDistance, 0, localPlayer.CameraMaxZoomDistance)
 		if newSubjectDistance < 1.0 then
 			self.currentSubjectDistance = 0.5
 			if not self.inFirstPerson then
@@ -4588,7 +4562,6 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		local newCameraCFrame = camera.CFrame
 		local newCameraFocus = camera.Focus
 		
-		local player = Players.LocalPlayer
 		local humanoid = self:GetHumanoid()
 		local cameraSubject = camera.CameraSubject
 		
@@ -4599,7 +4572,7 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		self:StepZoom()
 		-- update fullscreen effects
 		self:UpdateFadeFromBlack(timeDelta)
-		self:UpdateEdgeBlur(player, timeDelta)
+		self:UpdateEdgeBlur(localPlayer, timeDelta)
 		
 		local lastSubjPos = self.lastSubjectPosition
 		local subjectPosition: Vector3 = self:GetSubjectPosition()
@@ -4615,7 +4588,7 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 			end
 		end
 		
-		if subjectPosition and player and camera then
+		if subjectPosition and camera then
 			newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
 			
 			if self:IsInFirstPerson() then
@@ -4648,10 +4621,9 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		end
 		
 		-- blur screen edge during movement
-		local player = Players.LocalPlayer
 		local subjectDelta = lastSubjPos - subjectPosition
 		if subjectDelta.magnitude > 0.01 then
-			self:StartVREdgeBlur(player)
+			self:StartVREdgeBlur(localPlayer)
 		end
 		-- straight view, not angled down
 		local cameraFocusP = newCameraFocus.p
@@ -4690,9 +4662,8 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		
 		if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
 			-- compute delta of subject since last update
-			local player = Players.LocalPlayer
 			local subjectDelta = lastSubjPos - subjectPosition
-			local moveVector = require(player:WaitForChild("PlayerScripts").PlayerModule:WaitForChild("ControlModule")):GetMoveVector()
+			local moveVector = require(localPlayer:WaitForChild("PlayerScripts").PlayerModule:WaitForChild("ControlModule")):GetMoveVector()
 			
 			-- is the subject still moving?
 			local isMoving = subjectDelta.magnitude > 0.01 or moveVector.magnitude > 0.01
@@ -5066,8 +5037,6 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	
 	local RunService = game:GetService("RunService")
 	
-	local localPlayer = Players.LocalPlayer
-	
 	local map = CameraUtils.map
 	local Spring = CameraUtils.Spring
 	local mapClamp = CameraUtils.mapClamp
@@ -5288,7 +5257,6 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	local RunService = game:GetService("RunService")
 	local VRService = game:GetService("VRService")
 	
-	local localPlayer = Players.LocalPlayer
 	local Spring = CameraUtils.Spring
 	local mapClamp = CameraUtils.mapClamp
 	local sanitizeAngle = CameraUtils.sanitizeAngle
@@ -5533,7 +5501,7 @@ local CameraModule = {} do
 
 	-- Management of which options appear on the Roblox User Settings screen
 	do
-		local PlayerScripts = Players.LocalPlayer:WaitForChild("PlayerScripts")
+		local PlayerScripts = localPlayer:WaitForChild("PlayerScripts")
 
 		PlayerScripts:RegisterTouchCameraMovementMode(Enum.TouchCameraMovementMode.Default)
 		PlayerScripts:RegisterTouchCameraMovementMode(Enum.TouchCameraMovementMode.Follow)
@@ -5585,13 +5553,13 @@ local CameraModule = {} do
 		end
 
 		self:ActivateCameraController(self:GetCameraControlChoice())
-		self:ActivateOcclusionModule(Players.LocalPlayer.DevCameraOcclusionMode)
+		self:ActivateOcclusionModule(localPlayer.DevCameraOcclusionMode)
 		self:OnCurrentCameraChanged() -- Does initializations and makes first camera controller
 		RunService:BindToRenderStep("cameraRenderUpdate", Enum.RenderPriority.Camera.Value, function(dt) self:Update(dt) end)
 
 		-- Connect listeners to camera-related properties
 		for _, propertyName in pairs(PLAYER_CAMERA_PROPERTIES) do
-			Players.LocalPlayer:GetPropertyChangedSignal(propertyName):Connect(function()
+			localPlayer:GetPropertyChangedSignal(propertyName):Connect(function()
 				self:OnLocalPlayerCameraPropertyChanged(propertyName)
 			end)
 		end
@@ -5609,7 +5577,7 @@ local CameraModule = {} do
 	end
 
 	function CameraModule:GetCameraMovementModeFromSettings()
-		local cameraMode = Players.LocalPlayer.CameraMode
+		local cameraMode = localPlayer.CameraMode
 
 		-- Lock First Person trumps all other settings and forces ClassicCamera
 		if cameraMode == Enum.CameraMode.LockFirstPerson then
@@ -5618,10 +5586,10 @@ local CameraModule = {} do
 
 		local devMode, userMode
 		if UserInputService.TouchEnabled then
-			devMode = CameraUtils.ConvertCameraModeEnumToStandard(Players.LocalPlayer.DevTouchCameraMode)
+			devMode = CameraUtils.ConvertCameraModeEnumToStandard(localPlayer.DevTouchCameraMode)
 			userMode = CameraUtils.ConvertCameraModeEnumToStandard(UserGameSettings.TouchCameraMovementMode)
 		else
-			devMode = CameraUtils.ConvertCameraModeEnumToStandard(Players.LocalPlayer.DevComputerCameraMode)
+			devMode = CameraUtils.ConvertCameraModeEnumToStandard(localPlayer.DevComputerCameraMode)
 			userMode = CameraUtils.ConvertCameraModeEnumToStandard(UserGameSettings.ComputerCameraMovementMode)
 		end
 
@@ -5694,8 +5662,8 @@ local CameraModule = {} do
 			-- Poppercam needs all player characters and the camera subject
 			if occlusionMode == Enum.DevCameraOcclusionMode.Invisicam then
 				-- Optimization to only send Invisicam what we know it needs
-				if Players.LocalPlayer.Character then
-					self.activeOcclusionModule:CharacterAdded(Players.LocalPlayer.Character, Players.LocalPlayer )
+				if localPlayer.Character then
+					self.activeOcclusionModule:CharacterAdded(localPlayer.Character, localPlayer)
 				end
 			else
 				-- When Poppercam is enabled, we send it all existing player characters for its raycast ignore list
@@ -5890,7 +5858,7 @@ local CameraModule = {} do
 		if propertyName == "CameraMode" then
 			-- CameraMode is only used to turn on/off forcing the player into first person view. The
 			-- Note: The case "Classic" is used for all other views and does not correspond only to the ClassicCamera module
-			if Players.LocalPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
+			if localPlayer.CameraMode == Enum.CameraMode.LockFirstPerson then
 				-- Locked in first person, use ClassicCamera which supports this
 				if not self.activeCameraController or self.activeCameraController:GetModuleName() ~= "ClassicCamera" then
 					self:ActivateCameraController(CameraUtils.ConvertCameraModeEnumToStandard(Enum.DevComputerCameraMovementMode.Classic))
@@ -5899,12 +5867,12 @@ local CameraModule = {} do
 				if self.activeCameraController then
 					self.activeCameraController:UpdateForDistancePropertyChange()
 				end
-			elseif Players.LocalPlayer.CameraMode == Enum.CameraMode.Classic then
+			elseif localPlayer.CameraMode == Enum.CameraMode.Classic then
 				-- Not locked in first person view
 				local cameraMovementMode = self:GetCameraMovementModeFromSettings()
 				self:ActivateCameraController(CameraUtils.ConvertCameraModeEnumToStandard(cameraMovementMode))
 			else
-				warn("Unhandled value for property player.CameraMode: ",Players.LocalPlayer.CameraMode)
+				warn("Unhandled value for property player.CameraMode: ", localPlayer.CameraMode)
 			end
 
 		elseif propertyName == "DevComputerCameraMode" or
@@ -5913,7 +5881,7 @@ local CameraModule = {} do
 			self:ActivateCameraController(CameraUtils.ConvertCameraModeEnumToStandard(cameraMovementMode))
 
 		elseif propertyName == "DevCameraOcclusionMode" then
-			self:ActivateOcclusionModule(Players.LocalPlayer.DevCameraOcclusionMode)
+			self:ActivateOcclusionModule(localPlayer.DevCameraOcclusionMode)
 
 		elseif propertyName == "CameraMinZoomDistance" or propertyName == "CameraMaxZoomDistance" then
 			if self.activeCameraController then
@@ -5972,24 +5940,20 @@ local CameraModule = {} do
 	-- Formerly getCurrentCameraMode, this function resolves developer and user camera control settings to
 	-- decide which camera control module should be instantiated. The old method of converting redundant enum types
 	function CameraModule:GetCameraControlChoice()
-		local player = Players.LocalPlayer
-
-		if player then
-			if UserInputService:GetLastInputType() == Enum.UserInputType.Touch or UserInputService.TouchEnabled then
-				-- Touch
-				if player.DevTouchCameraMode == Enum.DevTouchCameraMovementMode.UserChoice then
-					return CameraUtils.ConvertCameraModeEnumToStandard( UserGameSettings.TouchCameraMovementMode )
-				else
-					return CameraUtils.ConvertCameraModeEnumToStandard( player.DevTouchCameraMode )
-				end
+		if UserInputService:GetLastInputType() == Enum.UserInputType.Touch or UserInputService.TouchEnabled then
+			-- Touch
+			if localPlayer.DevTouchCameraMode == Enum.DevTouchCameraMovementMode.UserChoice then
+				return CameraUtils.ConvertCameraModeEnumToStandard( UserGameSettings.TouchCameraMovementMode )
 			else
-				-- Computer
-				if player.DevComputerCameraMode == Enum.DevComputerCameraMovementMode.UserChoice then
-					local computerMovementMode = CameraUtils.ConvertCameraModeEnumToStandard(UserGameSettings.ComputerCameraMovementMode)
-					return CameraUtils.ConvertCameraModeEnumToStandard(computerMovementMode)
-				else
-					return CameraUtils.ConvertCameraModeEnumToStandard(player.DevComputerCameraMode)
-				end
+				return CameraUtils.ConvertCameraModeEnumToStandard( localPlayer.DevTouchCameraMode )
+			end
+		else
+			-- Computer
+			if localPlayer.DevComputerCameraMode == Enum.DevComputerCameraMovementMode.UserChoice then
+				local computerMovementMode = CameraUtils.ConvertCameraModeEnumToStandard(UserGameSettings.ComputerCameraMovementMode)
+				return CameraUtils.ConvertCameraModeEnumToStandard(computerMovementMode)
+			else
+				return CameraUtils.ConvertCameraModeEnumToStandard(localPlayer.DevComputerCameraMode)
 			end
 		end
 	end
@@ -6116,8 +6080,6 @@ local ClickToMoveDisplay = {} do
 	local RunService = game:GetService("RunService")
 	local Workspace = game:GetService("Workspace")
 	
-	local LocalPlayer = Players.LocalPlayer
-	
 	local function CreateWaypointTemplates()
 		local TrailDotTemplate = Instance.new("Part")
 		TrailDotTemplate.Size = Vector3.new(1, 1, 1)
@@ -6219,7 +6181,7 @@ local ClickToMoveDisplay = {} do
 		local ray = Ray.new(position + Vector3.new(0, 2.5, 0), Vector3.new(0, -10, 0))
 		local hitPart, hitPoint, hitNormal = Workspace:FindPartOnRayWithIgnoreList(
 			ray,
-			{ Workspace.CurrentCamera, LocalPlayer.Character }
+			{ Workspace.CurrentCamera, localPlayer.Character }
 		)
 		if hitPart then
 			waypointModel.CFrame = CFrame.new(hitPoint, hitPoint + hitNormal)
@@ -6338,7 +6300,7 @@ local ClickToMoveDisplay = {} do
 			placePathWaypoint(newDisplayModel, position)
 			local ray = Ray.new(position + Vector3.new(0, 2.5, 0), Vector3.new(0, -10, 0))
 			local hitPart, hitPoint, hitNormal = Workspace:FindPartOnRayWithIgnoreList(
-				ray, { Workspace.CurrentCamera, LocalPlayer.Character }
+				ray, { Workspace.CurrentCamera, localPlayer.Character }
 			)
 			if hitPart then
 				newDisplayModel.CFrame = CFrame.new(hitPoint, hitPoint + hitNormal)
@@ -6416,7 +6378,7 @@ local ClickToMoveDisplay = {} do
 	end
 	
 	local function findPlayerHumanoid()
-		local character = LocalPlayer.Character
+		local character = localPlayer.Character
 		if character then
 			return character:FindFirstChildOfClass("Humanoid")
 		end
@@ -6756,9 +6718,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		[Enum.KeyCode.Up] = true;
 		[Enum.KeyCode.Down] = true;
 	}
-	
-	local LocalPlayer = Players.LocalPlayer
-	
+		
 	local humanoidCache = {}
 	local function findPlayerHumanoid(player: Player)
 		local character = player and player.Character
@@ -6778,7 +6738,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 	end
 	
 	local function getCharacter(): Model
-		return LocalPlayer and LocalPlayer.Character
+		return localPlayer.Character
 	end
 	
 	local function getEquippedTool(character: Model?)
@@ -6915,7 +6875,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			
 			self.Timeout = 0
 			
-			self.Humanoid = findPlayerHumanoid(LocalPlayer)
+			self.Humanoid = findPlayerHumanoid(localPlayer)
 			self.OriginPoint = nil
 			self.AgentCanFollowPath = false
 			self.DirectPath = false
@@ -7501,7 +7461,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		end
 		
 		local function CheckAlive()
-			local humanoid = findPlayerHumanoid(LocalPlayer)
+			local humanoid = findPlayerHumanoid(localPlayer)
 			return humanoid and humanoid.Health > 0
 		end
 		
@@ -7510,7 +7470,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		function PatherHandler:OnTap(tapPositions: {Vector3}, goToPoint: Vector3?, wasTouchTap: boolean?)
 			-- Good to remember if this is the latest tap event
 			local camera = workspace.CurrentCamera
-			local character = LocalPlayer.Character
+			local character = localPlayer.Character
 			
 			if not CheckAlive() then return end
 			
@@ -7520,7 +7480,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 					local unitRay = camera:ScreenPointToRay(tapPositions[1].X, tapPositions[1].Y)
 					local ray = Ray.new(unitRay.Origin, unitRay.Direction * 1000)
 					
-					local myHumanoid = findPlayerHumanoid(LocalPlayer)
+					local myHumanoid = findPlayerHumanoid(localPlayer)
 					local hitPart, hitPt, hitNormal = Raycast(ray, true, self:GetIgnoreList())
 					
 					local hitChar, hitHumanoid = FindCharacterAncestor(hitPart)
@@ -7751,10 +7711,10 @@ local ClickToMove = setmetatable({}, Keyboard) do
 	function ClickToMove:Enable(enable: boolean, enableWASD: boolean, touchJumpController)
 		if enable then
 			if not self.running then
-				if LocalPlayer.Character then -- retro-listen
-					self:OnCharacterAdded(LocalPlayer.Character)
+				if localPlayer.Character then -- retro-listen
+					self:OnCharacterAdded(localPlayer.Character)
 				end
-				self.onCharacterAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
+				self.onCharacterAddedConn = localPlayer.CharacterAdded:Connect(function(char)
 					self:OnCharacterAdded(char)
 				end)
 				self.running = true
@@ -7769,7 +7729,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 				patherHandler:CleanupPath()
 				-- Restore tool activation on shutdown
 				if UserInputService.TouchEnabled then
-					local character = LocalPlayer.Character
+					local character = localPlayer.Character
 					if character then
 						for _, child in pairs(character:GetChildren()) do
 							if child:IsA('Tool') then
@@ -7955,7 +7915,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 	end
 	
 	function ClickToMove:MoveTo(position, showPath, useDirectPath)
-		local character = LocalPlayer.Character
+		local character = localPlayer.Character
 		if not character then
 			return false
 		end
@@ -8001,12 +7961,6 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	local GuiService = game:GetService("GuiService")
 	local RunService = game:GetService("RunService")
 	local TweenService = game:GetService("TweenService")
-	
-	local LocalPlayer = Players.LocalPlayer
-	if not LocalPlayer then
-		Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-		LocalPlayer = Players.LocalPlayer
-	end
 	
 	function DynamicThumbstick.new()
 		local self = setmetatable(BaseCharacterController.new() :: any, DynamicThumbstick)
@@ -8141,7 +8095,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function DynamicThumbstick:DoFadeInBackground()
-		local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 		local hasFadedBackgroundInOrientation = false
 		
 		-- only fade in/out the background once per orientation
@@ -8463,10 +8417,10 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			end
 		end)
 		
-		local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 		while not playerGui do
-			LocalPlayer.ChildAdded:wait()
-			playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			localPlayer.ChildAdded:wait()
+			playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 		end
 		
 		local playerGuiChangedConn = nil
@@ -8769,7 +8723,7 @@ local PathDisplay = {} do
 		end
 		
 		local rayDown = Ray.new(point + Vector3.new(0, 2, 0), Vector3.new(0, -8, 0))
-		local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(rayDown, { (game.Players.LocalPlayer :: Player).Character :: Model, workspace.CurrentCamera :: Camera })
+		local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(rayDown, { (localPlayer :: Player).Character :: Model, workspace.CurrentCamera :: Camera })
 		if not hitPart then
 			return nil
 		end
@@ -8885,7 +8839,7 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 			if not self.jumpButton then
 				self:Create()
 			end
-			local humanoid = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if humanoid and self.externallyEnabled then
 				if self.externallyEnabled then
 					if humanoid.JumpPower > 0 then
@@ -8909,7 +8863,7 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function TouchJump:HumanoidChanged(prop)
-		local humanoid = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid then
 			if prop == "JumpPower" then
 				self.jumpPower =  humanoid.JumpPower
@@ -8965,11 +8919,11 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function TouchJump:SetupCharacterAddedFunction()
-		self.characterAddedConn = Players.LocalPlayer.CharacterAdded:Connect(function(char)
+		self.characterAddedConn = localPlayer.CharacterAdded:Connect(function(char)
 			self:CharacterAdded(char)
 		end)
-		if Players.LocalPlayer.Character then
-			self:CharacterAdded(Players.LocalPlayer.Character)
+		if localPlayer.Character then
+			self:CharacterAdded(localPlayer.Character)
 		end
 	end
 	
@@ -9239,8 +9193,6 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 	local PathfindingService = game:GetService("PathfindingService")
 	local StarterGui = game:GetService("StarterGui")
 	
-	local LocalPlayer = Players.LocalPlayer
-	
 	--[[ Constants ]]--
 	local RECALCULATE_PATH_THRESHOLD = 4
 	local NO_PATH_THRESHOLD = 12
@@ -9297,7 +9249,7 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function VRNavigation:GetLocalHumanoid()
-		local character = LocalPlayer.Character
+		local character = localPlayer.Character
 		if not character then
 			return
 		end
@@ -9579,7 +9531,7 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 				end
 			else
 				local ignoreTable = {
-					(game.Players.LocalPlayer :: Player).Character,
+					localPlayer.Character,
 					workspace.CurrentCamera
 				}
 				local obstructRay = Ray.new(currentPosition - Vector3.new(0, 1, 0), moveDir * 3)
@@ -9957,7 +9909,7 @@ local ControlModule = {} do
 		self.activeControlModule = nil	-- Used to prevent unnecessarily expensive checks on each input event
 		self.activeController = nil
 		self.touchJumpController = nil
-		self.moveFunction = Players.LocalPlayer.Move
+		self.moveFunction = localPlayer.Move
 		self.humanoid = nil
 		self.lastInputType = Enum.UserInputType.None
 		self.controlsEnabled = true
@@ -9984,10 +9936,10 @@ local ControlModule = {} do
 		
 		self.vehicleController = VehicleController.new(CONTROL_ACTION_PRIORITY)
 		
-		Players.LocalPlayer.CharacterAdded:Connect(function(char) self:OnCharacterAdded(char) end)
-		Players.LocalPlayer.CharacterRemoving:Connect(function(char) self:OnCharacterRemoving(char) end)
-		if Players.LocalPlayer.Character then
-			self:OnCharacterAdded(Players.LocalPlayer.Character)
+		localPlayer.CharacterAdded:Connect(function(char) self:OnCharacterAdded(char) end)
+		localPlayer.CharacterRemoving:Connect(function(char) self:OnCharacterRemoving(char) end)
+		if localPlayer.Character then
+			self:OnCharacterAdded(localPlayer.Character)
 		end
 		
 		RunService:BindToRenderStep("ControlScriptRenderstep", Enum.RenderPriority.Input.Value, function(dt)
@@ -10002,14 +9954,14 @@ local ControlModule = {} do
 		UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
 			self:OnTouchMovementModeChange()
 		end)
-		Players.LocalPlayer:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
+		localPlayer:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
 			self:OnTouchMovementModeChange()
 		end)
 		
 		UserGameSettings:GetPropertyChangedSignal("ComputerMovementMode"):Connect(function()
 			self:OnComputerMovementModeChange()
 		end)
-		Players.LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
+		localPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
 			self:OnComputerMovementModeChange()
 		end)
 		
@@ -10024,12 +9976,12 @@ local ControlModule = {} do
 		end)
 		
 		if UserInputService.TouchEnabled then
-			self.playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			self.playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 			if self.playerGui then
 				self:CreateTouchGuiContainer()
 				self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
 			else
-				self.playerGuiAddedConn = Players.LocalPlayer.ChildAdded:Connect(function(child)
+				self.playerGuiAddedConn = localPlayer.ChildAdded:Connect(function(child)
 					if child:IsA("PlayerGui") then
 						self.playerGui = child
 						self:CreateTouchGuiContainer()
@@ -10067,7 +10019,7 @@ local ControlModule = {} do
 			self.activeController:Enable(false)
 			
 			if self.moveFunction then
-				self.moveFunction(Players.LocalPlayer, Vector3.new(0,0,0), true)
+				self.moveFunction(localPlayer, Vector3.new(0,0,0), true)
 			end
 		end
 		
@@ -10077,7 +10029,7 @@ local ControlModule = {} do
 				-- When the developer is forcing click to move, the most keyboard controls (WASD) are not available, only jump.
 				self.activeController:Enable(
 					true,
-					Players.LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.UserChoice,
+					localPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.UserChoice,
 					self.touchJumpController
 				)
 			elseif self.touchControlFrame then
@@ -10139,7 +10091,7 @@ local ControlModule = {} do
 		end
 		
 		local computerModule
-		local DevMovementMode = Players.LocalPlayer.DevComputerMovementMode
+		local DevMovementMode = localPlayer.DevComputerMovementMode
 		
 		if DevMovementMode == Enum.DevComputerMovementMode.UserChoice then
 			computerModule = computerInputTypeToModuleMap[lastInputType]
@@ -10176,7 +10128,7 @@ local ControlModule = {} do
 			return nil, false
 		end
 		local touchModule
-		local DevMovementMode = Players.LocalPlayer.DevTouchMovementMode
+		local DevMovementMode = localPlayer.DevTouchMovementMode
 		if DevMovementMode == Enum.DevTouchMovementMode.UserChoice then
 			touchModule = movementEnumToModuleMap[UserGameSettings.TouchMovementMode]
 		elseif DevMovementMode == Enum.DevTouchMovementMode.Scriptable then
@@ -10263,7 +10215,7 @@ local ControlModule = {} do
 			if cameraRelative then
 				moveVector = calculateRawMoveVector(self.humanoid, moveVector)
 			end
-			self.moveFunction(Players.LocalPlayer, moveVector, false)
+			self.moveFunction(localPlayer, moveVector, false)
 			--end
 			
 			-- And make them jump if needed
