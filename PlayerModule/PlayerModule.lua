@@ -8142,7 +8142,8 @@ local ClickToMove = setmetatable({}, Keyboard) do
 end
 	
 
-local REQUIRE_DynamicThumbstick = (function()
+local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
+	DynamicThumbstick.__index = DynamicThumbstick
 	--[[ Constants ]]--
 	local TOUCH_CONTROLS_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
 	
@@ -8179,10 +8180,6 @@ local REQUIRE_DynamicThumbstick = (function()
 		Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
 		LocalPlayer = Players.LocalPlayer
 	end
-	
-	--[[ The Module ]]--
-	local DynamicThumbstick = setmetatable({}, BaseCharacterController)
-	DynamicThumbstick.__index = DynamicThumbstick
 	
 	function DynamicThumbstick.new()
 		local self = setmetatable(BaseCharacterController.new() :: any, DynamicThumbstick)
@@ -8682,9 +8679,7 @@ local REQUIRE_DynamicThumbstick = (function()
 		end
 	end
 	
-	return DynamicThumbstick
-	
-end)()
+end
 
 
 local Gamepad = setmetatable({}, BaseCharacterController) do
@@ -9025,8 +9020,6 @@ local PathDisplay = {} do
 		
 		pointModel.Parent = workspace.CurrentCamera
 	end
-	
-	return PathDisplay
 	
 end
 
@@ -10091,7 +10084,7 @@ local ControlModule = {} do
 	local VRService = game:GetService("VRService")
 	
 	-- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
-	local DynamicThumbstick = REQUIRE_DynamicThumbstick
+	-- Keyboard, Gamepad, DynamicThumbstick, TouchThumbstick
 	
 	local FFlagUserHideControlsWhenMenuOpen = getFastFlag("UserHideControlsWhenMenuOpen")
 	
