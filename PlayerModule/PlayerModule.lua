@@ -6,14 +6,17 @@ local function getFastFlag(name)
 	return success and result
 end
 
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+
 local CameraUtils = {} do
 	--[[
 		CameraUtils - Math utility functions shared by multiple camera scripts
 		2018 Camera Update - AllYourBlox
 	--]]
 	
-	local Players = game:GetService("Players")
-	local UserInputService = game:GetService("UserInputService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	local function round(num: number)
@@ -320,8 +323,6 @@ local Popper do
 	-- Popper.lua
 	-- Prevents your camera from clipping through walls.
 	--------------------------------------------------------------------------------
-	
-	local Players = game:GetService("Players")
 	
 	local camera = game.Workspace.CurrentCamera
 	
@@ -676,7 +677,7 @@ local ZoomController = {} do
 	local pi = math.pi
 	
 	local cameraMinZoomDistance, cameraMaxZoomDistance do
-		local Player = game:GetService("Players").LocalPlayer
+		local Player = Players.LocalPlayer
 		assert(Player)
 		
 		local function updateBounds()
@@ -798,9 +799,6 @@ end
 
 
 local CameraInput = {} do
-	local ContextActionService = game:GetService("ContextActionService")
-	local UserInputService = game:GetService("UserInputService")
-	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	local VRService = game:GetService("VRService")
@@ -1356,7 +1354,6 @@ end
 
 local CameraUI: any = {} do
 	
-	local Players = game:GetService("Players")
 	local TweenService = game:GetService("TweenService")
 	local StarterGui = game:GetService("StarterGui")
 	
@@ -1575,8 +1572,6 @@ end
 
 
 local CameraToggleStateController do
-	local Players = game:GetService("Players")
-	local UserInputService = game:GetService("UserInputService")
 	local GameSettings = userSettings:GetService("UserGameSettings")
 	
 	local Input = CameraInput
@@ -1695,8 +1690,6 @@ local BaseCamera = {} do
 	local FIRST_PERSON_DISTANCE_MIN = 0.5
 	
 	--[[ Roblox Services ]]--
-	local Players = game:GetService("Players")
-	local UserInputService = game:GetService("UserInputService")
 	local StarterGui = game:GetService("StarterGui")
 	local VRService = game:GetService("VRService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
@@ -2532,7 +2525,6 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 	local FIRST_PERSON_DISTANCE_MIN = 0.5
 	
 	--[[ Services ]]--
-	local PlayersService = game:GetService("Players")
 	local VRService = game:GetService("VRService")
 	
 	function ClassicCamera.new()
@@ -2590,7 +2582,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 			self.resetCameraAngle = false
 		end
 		
-		local player = PlayersService.LocalPlayer
+		local player = Players.LocalPlayer
 		local humanoid = self:GetHumanoid()
 		local cameraSubject = camera.CameraSubject
 		local isInVehicle = cameraSubject and cameraSubject:IsA("VehicleSeat")
@@ -2765,9 +2757,6 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		Invisicam - Occlusion module that makes objects occluding character view semi-transparent
 		2018 Camera Update - AllYourBlox
 	--]]
-	
-	--[[ Top Level Roblox Services ]]--
-	local PlayersService = game:GetService("Players")
 	
 	--[[ Constants ]]--
 	local USE_STACKING_TRANSPARENCY = true	-- Multiple items between the subject and camera get transparency values that add up to TARGET_TRANSPARENCY
@@ -3096,7 +3085,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	
 	function Invisicam:CharacterAdded(char: Model, player: Player)
 		-- We only want the LocalPlayer's character
-		if player~=PlayersService.LocalPlayer then return end
+		if player~=Players.LocalPlayer then return end
 		
 		if self.childAddedConn then
 			self.childAddedConn:Disconnect()
@@ -3436,8 +3425,6 @@ local MouseLockController = {} do
 	local MOUSELOCK_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
 	
 	--[[ Services ]]--
-	local PlayersService = game:GetService("Players")
-	local ContextActionService = game:GetService("ContextActionService")
 	local Settings = userSettings	-- ignore warning
 	local GameSettings = Settings.GameSettings
 	
@@ -3480,12 +3467,12 @@ local MouseLockController = {} do
 		end)
 		
 		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		PlayersService.LocalPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
+		Players.LocalPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
 			self:UpdateMouseLockAvailability()
 		end)
 		
 		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		PlayersService.LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
+		Players.LocalPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
 			self:UpdateMouseLockAvailability()
 		end)
 		
@@ -3526,8 +3513,8 @@ local MouseLockController = {} do
 	end
 	
 	function MouseLockController:UpdateMouseLockAvailability()
-		local devAllowsMouseLock = PlayersService.LocalPlayer.DevEnableMouseLock
-		local devMovementModeIsScriptable = PlayersService.LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
+		local devAllowsMouseLock = Players.LocalPlayer.DevEnableMouseLock
+		local devMovementModeIsScriptable = Players.LocalPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
 		local userHasMouseLockModeEnabled = GameSettings.ControlMode == Enum.ControlMode.MouseLockSwitch
 		local userHasClickToMoveEnabled =  GameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove
 		local MouseLockAvailable = devAllowsMouseLock and userHasMouseLockModeEnabled and not userHasClickToMoveEnabled and not devMovementModeIsScriptable
@@ -4233,8 +4220,6 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	
 	local VRService = game:GetService("VRService")
 	
-	
-	local Players = game:GetService("Players")
 	local player = Players.LocalPlayer
 	
 	local Lighting = game:GetService("Lighting")
@@ -4569,7 +4554,6 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 	--]]
 	
 	--[[ Services ]]--
-	local PlayersService = game:GetService("Players")
 	local VRService = game:GetService("VRService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
@@ -4604,7 +4588,7 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		local newCameraCFrame = camera.CFrame
 		local newCameraFocus = camera.Focus
 		
-		local player = PlayersService.LocalPlayer
+		local player = Players.LocalPlayer
 		local humanoid = self:GetHumanoid()
 		local cameraSubject = camera.CameraSubject
 		
@@ -4664,7 +4648,7 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		end
 		
 		-- blur screen edge during movement
-		local player = PlayersService.LocalPlayer
+		local player = Players.LocalPlayer
 		local subjectDelta = lastSubjPos - subjectPosition
 		if subjectDelta.magnitude > 0.01 then
 			self:StartVREdgeBlur(player)
@@ -4706,7 +4690,7 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		
 		if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
 			-- compute delta of subject since last update
-			local player = PlayersService.LocalPlayer
+			local player = Players.LocalPlayer
 			local subjectDelta = lastSubjPos - subjectPosition
 			local moveVector = require(player:WaitForChild("PlayerScripts").PlayerModule:WaitForChild("ControlModule")):GetMoveVector()
 			
@@ -5080,7 +5064,6 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	local ZOOM_MINIMUM = 0.5
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
 	
-	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	
 	local localPlayer = Players.LocalPlayer
@@ -5302,7 +5285,6 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	local TP_FOLLOW_DIST = 200
 	local TP_FOLLOW_ANGLE_DOT = 0.56
 	
-	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local VRService = game:GetService("VRService")
 	
@@ -5541,9 +5523,7 @@ local CameraModule = {} do
 	}
 
 	--[[ Roblox Services ]]--
-	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
-	local UserInputService = game:GetService("UserInputService")
 	local VRService = game:GetService("VRService")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
 
@@ -6132,12 +6112,11 @@ local ClickToMoveDisplay = {} do
 	local TRAIL_DOT_MAX_SCALE = 2.5
 	local TRAIL_DOT_MAX_DISTANCE = 100
 	
-	local PlayersService = game:GetService("Players")
 	local TweenService = game:GetService("TweenService")
 	local RunService = game:GetService("RunService")
 	local Workspace = game:GetService("Workspace")
 	
-	local LocalPlayer = PlayersService.LocalPlayer
+	local LocalPlayer = Players.LocalPlayer
 	
 	local function CreateWaypointTemplates()
 		local TrailDotTemplate = Instance.new("Part")
@@ -6617,8 +6596,6 @@ local Keyboard = setmetatable({}, BaseCharacterController) do
 		return self
 	end
 	
-	local UserInputService = game:GetService("UserInputService")
-	
 	function Keyboard:Enable(enable: boolean)
 		if not UserInputService.KeyboardEnabled then
 			return false
@@ -6662,8 +6639,6 @@ local Keyboard = setmetatable({}, BaseCharacterController) do
 	function Keyboard:UpdateJump()
 		self.isJumping = self.jumpRequested
 	end
-	
-	local ContextActionService = game:GetService("ContextActionService")
 	
 	function Keyboard:BindContextActions()
 		
@@ -6782,7 +6757,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		[Enum.KeyCode.Down] = true;
 	}
 	
-	local LocalPlayer = game:GetService("Players").LocalPlayer
+	local LocalPlayer = Players.LocalPlayer
 	
 	local humanoidCache = {}
 	local function findPlayerHumanoid(player: Player)
@@ -7530,7 +7505,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			return humanoid and humanoid.Health > 0
 		end
 		
-		local Players = game:GetService("Players")
 		local StarterGui = game:GetService("StarterGui")
 		
 		function PatherHandler:OnTap(tapPositions: {Vector3}, goToPoint: Vector3?, wasTouchTap: boolean?)
@@ -7667,7 +7641,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 	end
 	
 	local GuiService = game:GetService("GuiService")
-	local UserInputService = game:GetService("UserInputService")
 	
 	function ClickToMove:OnCharacterAdded(character)
 		self:DisconnectEvents()
@@ -8025,10 +7998,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	local FADE_IN_OUT_BALANCE_DEFAULT = 0.5
 	local ThumbstickFadeTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 	
-	local Players = game:GetService("Players")
 	local GuiService = game:GetService("GuiService")
-	local UserInputService = game:GetService("UserInputService")
-	local ContextActionService = game:GetService("ContextActionService")
 	local RunService = game:GetService("RunService")
 	local TweenService = game:GetService("TweenService")
 	
@@ -8548,9 +8518,6 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 		2018 PlayerScripts Update - AllYourBlox
 	--]]
 	
-	local UserInputService = game:GetService("UserInputService")
-	local ContextActionService = game:GetService("ContextActionService")
-	
 	local NONE = Enum.UserInputType.None
 	local thumbstickDeadzone = 0.2
 		
@@ -8891,7 +8858,6 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 		// Description: Implements jump controls for touch devices. Use with Thumbstick and Thumbpad
 	--]]
 	
-	local Players = game:GetService("Players")
 	local GuiService = game:GetService("GuiService")
 	
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
@@ -9086,9 +9052,7 @@ end
 local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 	TouchThumbstick.__index = TouchThumbstick
 	
-	local Players = game:GetService("Players")
 	local GuiService = game:GetService("GuiService")
-	local UserInputService = game:GetService("UserInputService")
 	--[[ Constants ]]--
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
 	
@@ -9271,11 +9235,8 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 	VRNavigation.__index = VRNavigation
 	
 	local VRService = game:GetService("VRService")
-	local UserInputService = game:GetService("UserInputService")
 	local RunService = game:GetService("RunService")
-	local Players = game:GetService("Players")
 	local PathfindingService = game:GetService("PathfindingService")
-	local ContextActionService = game:GetService("ContextActionService")
 	local StarterGui = game:GetService("StarterGui")
 	
 	local LocalPlayer = Players.LocalPlayer
@@ -9740,8 +9701,6 @@ local VehicleController = {} do
 		// multiple VehicleSeats or your own implementation of a VehicleSeat this will not work.
 	--]]
 	
-	local ContextActionService = game:GetService("ContextActionService")
-	
 	--[[ Constants ]]--
 	-- Set this to true if you want to instead use the triggers for the throttle
 	local useTriggersForThrottle = true
@@ -9932,9 +9891,7 @@ local ControlModule = {} do
 	--]]
 	
 	--[[ Roblox Services ]]--
-	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
-	local UserInputService = game:GetService("UserInputService")
 	local GuiService = game:GetService("GuiService")
 	local Workspace = game:GetService("Workspace")
 	local UserGameSettings = userSettings:GetService("UserGameSettings")
