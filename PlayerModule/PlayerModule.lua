@@ -53,10 +53,10 @@ local CameraUtils = {} do
 			local v0: Vector3 = self.vel
 			
 			local offset = p0 - g
-			local decay = math.exp(-f*dt)
+			local decay = math.exp(-f * dt)
 			
-			local p1 = (offset*(1 + f*dt) + v0*dt)*decay + g
-			local v1 = (v0*(1 - f*dt) - offset*(f*f*dt))*decay
+			local p1 = (offset * (1 + f * dt) + v0 * dt) * decay + g
+			local v1 = (v0 * (1 - f * dt) - offset * (f * f * dt)) * decay
 			
 			self.pos = p1
 			self.vel = v1
@@ -69,13 +69,13 @@ local CameraUtils = {} do
 	
 	-- map a value from one range to another
 	function CameraUtils.map(x: number, inMin: number, inMax: number, outMin: number, outMax: number): number
-		return (x - inMin)*(outMax - outMin)/(inMax - inMin) + outMin
+		return (x - inMin) * (outMax - outMin) / (inMax - inMin) + outMin
 	end
 	
 	-- maps a value from one range to another, clamping to the output range. order does not matter
 	function CameraUtils.mapClamp(x: number, inMin: number, inMax: number, outMin: number, outMax: number): number
 		return math.clamp(
-			(x - inMin)*(outMax - outMin)/(inMax - inMin) + outMin,
+			(x - inMin) * (outMax - outMin) / (inMax - inMin) + outMin,
 			math.min(outMin, outMax),
 			math.max(outMin, outMax)
 		)
@@ -118,8 +118,8 @@ local CameraUtils = {} do
 		end
 		
 		-- use (y, z) as the initial bounding sphere
-		local sc = (y + z)*0.5
-		local sr = (y - z).Magnitude*0.5
+		local sc = (y + z) * 0.5
+		local sr = (y - z).Magnitude * 0.5
 		
 		-- expand sphere to fit any outlying points
 		for _, p in ipairs(points) do
@@ -127,10 +127,10 @@ local CameraUtils = {} do
 			
 			if pDist > sr then
 				-- shift to midpoint
-				sc = sc + (pDist - sr)*0.5*(p - sc).Unit
+				sc += (pDist - sr) * 0.5 * (p - sc).Unit
 				
 				-- expand
-				sr = (pDist + sr)*0.5
+				sr = (pDist + sr) * 0.5
 			end
 		end
 		
@@ -139,12 +139,12 @@ local CameraUtils = {} do
 	
 	-- canonicalize an angle to +-180 degrees
 	function CameraUtils.sanitizeAngle(a: number): number
-		return (a + math.pi)%(2*math.pi) - math.pi
+		return (a + math.pi) % (2 * math.pi) - math.pi
 	end
 	
 	-- From TransparencyController
 	function CameraUtils.Round(num: number, places: number): number
-		local decimalPivot = 10^places
+		local decimalPivot = 10 ^ places
 		return math.floor(num * decimalPivot + 0.5) / decimalPivot
 	end
 	
@@ -180,16 +180,16 @@ local CameraUtils = {} do
 		if t >= 0 then
 			return (k*t) / (k - t + 1)
 		end
-		return -((lowerK*-t) / (lowerK + t + 1))
+		return -((lowerK * -t) / (lowerK + t + 1))
 	end
 	
 	local DEADZONE = 0.1
 	local function toSCurveSpace(t: number)
-		return (1 + DEADZONE) * (2*math.abs(t) - 1) - DEADZONE
+		return (1 + DEADZONE) * (2 * math.abs(t) - 1) - DEADZONE
 	end
 	
 	local function fromSCurveSpace(t: number)
-		return t/2 + 0.5
+		return t / 2 + 0.5
 	end
 	
 	function CameraUtils.GamepadLinearToCurve(thumbstickPosition: Vector2)
@@ -211,6 +211,7 @@ local CameraUtils = {} do
 		Enum.ComputerCameraMovementMode |
 		Enum.DevTouchCameraMovementMode |
 		Enum.DevComputerCameraMovementMode): Enum.ComputerCameraMovementMode | Enum.DevComputerCameraMovementMode
+		
 		if enumValue == Enum.TouchCameraMovementMode.Default then
 			return Enum.ComputerCameraMovementMode.Follow
 		end
@@ -331,7 +332,7 @@ local Popper do
 	local ray = Ray.new
 	
 	local function getTotalTransparency(part)
-		return 1 - (1 - part.Transparency)*(1 - part.LocalTransparencyModifier)
+		return 1 - (1 - part.Transparency) * (1 - part.LocalTransparencyModifier)
 	end
 	
 	local function eraseFromEnd(t, toSize)
@@ -344,10 +345,10 @@ local Popper do
 		local function updateProjection()
 			local fov = math.rad(camera.FieldOfView)
 			local view = camera.ViewportSize
-			local ar = view.X/view.Y
+			local ar = view.X / view.Y
 			
-			projY = 2*math.tan(fov/2)
-			projX = ar*projY
+			projY = 2 * math.tan(fov / 2)
+			projX = ar * projY
 		end
 		
 		camera:GetPropertyChangedSignal("FieldOfView"):Connect(updateProjection)
@@ -369,7 +370,7 @@ local Popper do
 			blacklist = {}
 			for _, character in pairs(charMap) do
 				blacklist[n] = character
-				n = n + 1
+				n += 1
 			end
 		end
 		
@@ -441,11 +442,10 @@ local Popper do
 		-- 2. Interactable
 		-- 3. Not in the same assembly as the subject
 		
-		return
-			getTotalTransparency(part) < 0.25 and
-			part.CanCollide and
-			subjectRoot ~= (part:GetRootPart() or part) and
-			not part:IsA("TrussPart")
+		return getTotalTransparency(part) < 0.25
+			and part.CanCollide
+			and subjectRoot ~= (part:GetRootPart() or part)
+			and not part:IsA("TrussPart")
 	end
 	
 	-- Offsets for the volume visibility test
@@ -475,7 +475,7 @@ local Popper do
 					eraseFromEnd(blacklist, originalSize)
 					return hitPoint, true
 				end
-				blacklist[#blacklist + 1] = hitPart
+				table.insert(blacklist, hitPart)
 			end
 		until not hitPart
 		
@@ -500,7 +500,8 @@ local Popper do
 		local numPierced = 0
 		
 		repeat
-			local entryPart, entryPos = workspace:FindPartOnRayWithIgnoreList(ray(movingOrigin, target - movingOrigin), blacklist, false, true)
+			local entryPart, entryPos = workspace:FindPartOnRayWithIgnoreList(
+				ray(movingOrigin, target - movingOrigin), blacklist, false, true)
 			numPierced += 1
 			
 			if entryPart then
@@ -516,9 +517,8 @@ local Popper do
 					if exitPart and not earlyAbort then
 						local promote = false
 						if lastPos then
-							promote =
-								workspace:FindPartOnRayWithWhitelist(ray(lastPos, target - lastPos), wl, true) or
-								workspace:FindPartOnRayWithWhitelist(ray(target, lastPos - target), wl, true)
+							promote = workspace:FindPartOnRayWithWhitelist(ray(lastPos, target - lastPos), wl, true)
+								or workspace:FindPartOnRayWithWhitelist(ray(target, lastPos - target), wl, true)
 						end
 						
 						if promote then
@@ -534,8 +534,8 @@ local Popper do
 					end
 				end
 				
-				blacklist[#blacklist + 1] = entryPart
-				movingOrigin = entryPos - unitDir*1e-3
+				table.insert(blacklist, entryPart)
+				movingOrigin = entryPos - unitDir * 1e-3
 			end
 		until hardLimit < math.huge or not entryPart
 		
@@ -560,15 +560,15 @@ local Popper do
 		
 		-- Center the viewport on the PoI, sweep points on the edge towards the target, and take the minimum limits
 		for viewX = 0, 1 do
-			local worldX = fX*((viewX - 0.5)*projX)
+			local worldX = fX * ((viewX - 0.5) * projX)
 			
 			for viewY = 0, 1 do
-				local worldY = fY*((viewY - 0.5)*projY)
+				local worldY = fY * ((viewY - 0.5) * projY)
 				
-				local origin = fP + nearPlaneZ*(worldX + worldY)
+				local origin = fP + nearPlaneZ * (worldX + worldY)
 				local lastPos = camera:ViewportPointToRay(
-					viewport.x*viewX,
-					viewport.y*viewY
+					viewport.x * viewX,
+					viewport.y * viewY
 				).Origin
 				
 				local softPointLimit, hardPointLimit = queryPoint(origin, fZ, dist, lastPos)
@@ -576,11 +576,13 @@ local Popper do
 				if hardPointLimit < hardBoxLimit then
 					hardBoxLimit = hardPointLimit
 				end
+				
 				if softPointLimit < softBoxLimit then
 					softBoxLimit = softPointLimit
 				end
 			end
 		end
+		
 		debug.profileend()
 		
 		return softBoxLimit, hardBoxLimit
@@ -601,11 +603,12 @@ local Popper do
 			local SAMPLE_DT = 0.0625
 			local SAMPLE_MAX_T = 1.25
 			
-			local maxDist = (getCollisionPoint(fP, focusExtrapolation.posVelocity*SAMPLE_MAX_T) - fP).Magnitude
+			local maxDist = (getCollisionPoint(fP, focusExtrapolation.posVelocity * SAMPLE_MAX_T) - fP).Magnitude
 			-- Metric that decides how many samples to take
 			local combinedSpeed = focusExtrapolation.posVelocity.magnitude
 			
-			for dt = 0, math.min(SAMPLE_MAX_T, focusExtrapolation.rotVelocity.magnitude + maxDist/combinedSpeed), SAMPLE_DT do
+			local limit = math.min(SAMPLE_MAX_T, focusExtrapolation.rotVelocity.magnitude + maxDist/combinedSpeed)
+			for dt = 0, limit, SAMPLE_DT do
 				local cfDt = focusExtrapolation.extrapolate(dt) -- Extrapolated CFrame at time dt
 				
 				if queryPoint(cfDt.p, -cfDt.lookVector, dist) >= dist then
@@ -622,8 +625,8 @@ local Popper do
 			
 			for _, offset in ipairs(SCAN_SAMPLE_OFFSETS) do
 				local scaledOffset = offset
-				local pos = getCollisionPoint(fP, fX*scaledOffset.x + fY*scaledOffset.y)
-				if queryPoint(pos, (fP + fZ*dist - pos).Unit, dist) == math.huge then
+				local pos = getCollisionPoint(fP, fX * scaledOffset.x + fY * scaledOffset.y)
+				if queryPoint(pos, (fP + fZ * dist - pos).Unit, dist) == math.huge then
 					return false
 				end
 			end
@@ -645,6 +648,7 @@ local Popper do
 		if hard < dist then
 			dist = hard
 		end
+		
 		if soft < dist and testPromotion(focus, targetDist, focusExtrapolation) then
 			dist = soft
 		end
@@ -658,7 +662,6 @@ local Popper do
 end
 
 local ZoomController = {} do
-	-- Zoom
 	-- Controls the distance between the focus and the camera.
 	
 	local ZOOM_STIFFNESS = 4.5
@@ -710,11 +713,11 @@ local ZoomController = {} do
 			-- Solve for x[t] and x'[t].
 			
 			local offset = goal - x
-			local step = freq*dt
+			local step = freq * dt
 			local decay = math.exp(-step)
 			
-			local x1 = goal + (v*dt - offset*(step + 1))*decay
-			local v1 = ((offset*freq - v)*step + v)*decay
+			local x1 = goal + (v * dt - offset * (step + 1)) * decay
+			local v1 = ((offset * freq - v) * step + v) * decay
 			
 			-- Constrain
 			if x1 < minValue then
@@ -735,7 +738,7 @@ local ZoomController = {} do
 	local zoomSpring = ConstrainedSpring.new(ZOOM_STIFFNESS, ZOOM_DEFAULT, MIN_FOCUS_DIST, cameraMaxZoomDistance)
 	
 	local function stepTargetZoom(z: number, dz: number, zoomMin: number, zoomMax: number)
-		z = math.clamp(z + dz*(1 + z*ZOOM_ACCELERATION), zoomMin, zoomMax)
+		z = math.clamp(z + dz * (1 + z * ZOOM_ACCELERATION), zoomMin, zoomMax)
 		if z < DIST_OPAQUE then
 			z = dz <= 0 and zoomMin or DIST_OPAQUE
 		end
@@ -756,7 +759,7 @@ local ZoomController = {} do
 			
 			-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
 			poppedZoom = Popper(
-				focus*CFrame.new(0, 0, MIN_FOCUS_DIST),
+				focus * CFrame.new(0, 0, MIN_FOCUS_DIST),
 				maxPossibleZoom - MIN_FOCUS_DIST,
 				extrapolation
 			) + MIN_FOCUS_DIST
@@ -791,10 +794,10 @@ local CameraInput = {} do
 	local MB_TAP_LENGTH = 0.3 -- (s) length of time for a short mouse button tap to be registered
 	
 	local ROTATION_SPEED_KEYS = math.rad(120) -- (rad/s)
-	local ROTATION_SPEED_MOUSE = Vector2.new(1, 0.77)*math.rad(0.5) -- (rad/s)
-	local ROTATION_SPEED_POINTERACTION = Vector2.new(1, 0.77)*math.rad(7) -- (rad/s)
-	local ROTATION_SPEED_TOUCH = Vector2.new(1, 0.66)*math.rad(1) -- (rad/s)
-	local ROTATION_SPEED_GAMEPAD = Vector2.new(1, 0.77)*math.rad(4) -- (rad/s)
+	local ROTATION_SPEED_MOUSE = Vector2.new(1, 0.77) * math.rad(0.5) -- (rad/s)
+	local ROTATION_SPEED_POINTERACTION = Vector2.new(1, 0.77) * math.rad(7) -- (rad/s)
+	local ROTATION_SPEED_TOUCH = Vector2.new(1, 0.66) * math.rad(1) -- (rad/s)
+	local ROTATION_SPEED_GAMEPAD = Vector2.new(1, 0.77) * math.rad(4) -- (rad/s)
 	
 	local ZOOM_SPEED_MOUSE = 1 -- (scaled studs/wheel click)
 	local ZOOM_SPEED_KEYS = 0.1 -- (studs/s)
@@ -831,13 +834,13 @@ local CameraInput = {} do
 		
 		function thumbstickCurve(x)
 			-- remove sign, apply linear deadzone
-			local fDeadzone = (math.abs(x) - K_DEADZONE)/(1 - K_DEADZONE)
+			local fDeadzone = (math.abs(x) - K_DEADZONE) / (1 - K_DEADZONE)
 			
 			-- apply exponential curve and scale to fit in [0, 1]
-			local fCurve = (math.exp(K_CURVATURE*fDeadzone) - 1)/(math.exp(K_CURVATURE) - 1)
+			local fCurve = (math.exp(K_CURVATURE*fDeadzone) - 1) / (math.exp(K_CURVATURE) - 1)
 			
 			-- reapply sign and clamp
-			return math.sign(x)*math.clamp(fCurve, 0, 1)
+			return math.sign(x) * math.clamp(fCurve, 0, 1)
 		end
 	end
 	
@@ -861,12 +864,12 @@ local CameraInput = {} do
 		-- set up a line to fit:
 		-- 1 = f(0)
 		-- 0 = f(±pi/2)
-		local curveY = 1 - (2*math.abs(pitch)/math.pi)^0.75
+		local curveY = 1 - (2 * math.abs(pitch) / math.pi) ^ 0.75
 		
 		-- remap curveY from [0, 1] -> [MIN_TOUCH_SENSITIVITY_FRACTION, 1]
-		local sensitivity = curveY*(1 - MIN_TOUCH_SENSITIVITY_FRACTION) + MIN_TOUCH_SENSITIVITY_FRACTION
+		local sensitivity = curveY * (1 - MIN_TOUCH_SENSITIVITY_FRACTION) + MIN_TOUCH_SENSITIVITY_FRACTION
 		
-		return Vector2.new(1, sensitivity)*delta
+		return Vector2.new(1, sensitivity) * delta
 	end
 	
 	local function isInDynamicThumbstickArea(pos: Vector3): boolean
@@ -893,7 +896,7 @@ local CameraInput = {} do
 			pos.Y <= posBottomRight.Y
 	end
 	
-	local worldDt = 1/60
+	local worldDt = 1 / 60
 	RunService.Stepped:Connect(function(_, _worldDt)
 		worldDt = _worldDt
 	end)
@@ -963,11 +966,11 @@ local CameraInput = {} do
 			end
 			
 			local result =
-				kKeyboard*ROTATION_SPEED_KEYS +
-				kGamepad*ROTATION_SPEED_GAMEPAD +
-				kMouse*ROTATION_SPEED_MOUSE +
-				kPointerAction*ROTATION_SPEED_POINTERACTION +
-				kTouch*ROTATION_SPEED_TOUCH
+				kKeyboard * ROTATION_SPEED_KEYS +
+				kGamepad * ROTATION_SPEED_GAMEPAD +
+				kMouse * ROTATION_SPEED_MOUSE +
+				kPointerAction * ROTATION_SPEED_POINTERACTION +
+				kTouch * ROTATION_SPEED_TOUCH
 			
 			return result*inversionVector
 		end
@@ -976,13 +979,20 @@ local CameraInput = {} do
 			local kKeyboard = keyboardState.O - keyboardState.I
 			local kMouse = -mouseState.Wheel + mouseState.Pinch
 			local kTouch = -touchState.Pinch
-			return kKeyboard*ZOOM_SPEED_KEYS + kMouse*ZOOM_SPEED_MOUSE + kTouch*ZOOM_SPEED_TOUCH
+			return kKeyboard * ZOOM_SPEED_KEYS
+				+ kMouse * ZOOM_SPEED_MOUSE
+				+ kTouch * ZOOM_SPEED_TOUCH
 		end
 		
 		do
 			local function thumbstick(action, state, input)
 				local position = input.Position
-				gamepadState[input.KeyCode.Name] = Vector2.new(thumbstickCurve(position.X), -thumbstickCurve(position.Y))
+				
+				gamepadState[input.KeyCode.Name] = Vector2.new(
+					thumbstickCurve(position.X),
+					-thumbstickCurve(position.Y)
+				)
+				
 				return Enum.ContextActionResult.Pass
 			end
 			
@@ -1013,17 +1023,20 @@ local CameraInput = {} do
 			end
 			
 			local function resetInputDevices()
-				for _, device in pairs({
+				local states = {
 					gamepadState,
 					keyboardState,
 					mouseState,
 					touchState,
-					}) do
+				}
+				
+				for _, device in pairs(states) do
 					for k, v in pairs(device) do
 						if type(v) == "boolean" then
 							device[k] = false
 						else
-							device[k] *= 0 -- Mul by zero to preserve vector types
+							-- Mul by zero to preserve vector types
+							device[k] *= 0
 						end
 					end
 				end
@@ -1101,7 +1114,8 @@ local CameraInput = {} do
 					if #unsunkTouches == 1 then
 						if touches[input] == false then
 							local delta = input.Delta
-							touchState.Move += Vector2.new(delta.X, delta.Y) -- total touch pan movement (reset at end of frame)
+							-- total touch pan movement (reset at end of frame)
+							touchState.Move += Vector2.new(delta.X, delta.Y)
 						end
 					end
 					
@@ -1306,7 +1320,8 @@ local CameraInput = {} do
 			
 			rmbUpConnection = rmbUp:Connect(function()
 				holdPan = false
-				if tick() - lastRmbDown < MB_TAP_LENGTH and (togglePan or UserInputService:GetMouseDelta().Magnitude < 2) then
+				if tick() - lastRmbDown < MB_TAP_LENGTH
+				and (togglePan or UserInputService:GetMouseDelta().Magnitude < 2) then
 					togglePan = not togglePan
 				end
 			end)
@@ -1627,8 +1642,8 @@ local BaseCamera = {} do
 	--]]
 	
 	--[[ Local Constants ]]--
-	local UNIT_Z = Vector3.new(0,0,1)
-	local X1_Y0_Z1 = Vector3.new(1,0,1)	--Note: not a unit vector, used for projecting onto XZ plane
+	local UNIT_Z = Vector3.new(0, 0, 1)
+	local X1_Y0_Z1 = Vector3.new(1, 0, 1)	--Note: not a unit vector, used for projecting onto XZ plane
 	
 	local DEFAULT_DISTANCE = 12.5	-- Studs
 	local PORTRAIT_DEFAULT_DISTANCE = 25		-- Studs
@@ -1645,9 +1660,9 @@ local BaseCamera = {} do
 	local VR_LOW_INTENSITY_REPEAT = 0.1
 	local VR_HIGH_INTENSITY_REPEAT = 0.4
 	
-	local SEAT_OFFSET = Vector3.new(0,5,0)
-	local VR_SEAT_OFFSET = Vector3.new(0,4,0)
-	local HEAD_OFFSET = Vector3.new(0,1.5,0)
+	local SEAT_OFFSET = Vector3.new(0, 5, 0)
+	local VR_SEAT_OFFSET = Vector3.new(0, 4, 0)
+	local HEAD_OFFSET = Vector3.new(0, 1.5, 0)
 	local R15_HEAD_OFFSET = Vector3.new(0, 1.5, 0)
 	local R15_HEAD_OFFSET_NO_SCALING = Vector3.new(0, 2, 0)
 	local HUMANOID_ROOT_PART_SIZE = Vector3.new(2, 2, 1)
@@ -1862,7 +1877,7 @@ local BaseCamera = {} do
 						
 						local rootPart = humanoid.RootPart
 						if bodyPartToFollow == rootPart then
-							local rootPartSizeOffset = (rootPart.Size.Y - HUMANOID_ROOT_PART_SIZE.Y)/2
+							local rootPartSizeOffset = (rootPart.Size.Y - HUMANOID_ROOT_PART_SIZE.Y) / 2
 							heightOffset = heightOffset + Vector3.new(0, rootPartSizeOffset, 0)
 						end
 					else
@@ -1964,10 +1979,10 @@ local BaseCamera = {} do
 			local newZoom
 			
 			if zoomDelta > 0 then
-				newZoom = zoom + zoomDelta*(1 + zoom*ZOOM_SENSITIVITY_CURVATURE)
+				newZoom = zoom + zoomDelta * (1 + zoom * ZOOM_SENSITIVITY_CURVATURE)
 				newZoom = math.max(newZoom, self.FIRST_PERSON_DISTANCE_THRESHOLD)
 			else
-				newZoom = (zoom + zoomDelta)/(1 - zoomDelta*ZOOM_SENSITIVITY_CURVATURE)
+				newZoom = (zoom + zoomDelta) / (1 - zoomDelta * ZOOM_SENSITIVITY_CURVATURE)
 				newZoom = math.max(newZoom, FIRST_PERSON_DISTANCE_MIN)
 			end
 			
@@ -2006,7 +2021,7 @@ local BaseCamera = {} do
 						if humanoid.AutomaticScalingEnabled then
 							heightOffset = R15_HEAD_OFFSET
 							if bodyPartToFollow == humanoid.RootPart then
-								local rootPartSizeOffset = (humanoid.RootPart.Size.Y/2) - (HUMANOID_ROOT_PART_SIZE.Y/2)
+								local rootPartSizeOffset = (humanoid.RootPart.Size.Y / 2) - (HUMANOID_ROOT_PART_SIZE.Y / 2)
 								heightOffset = heightOffset + Vector3.new(0, rootPartSizeOffset, 0)
 							end
 						else
@@ -2053,9 +2068,17 @@ local BaseCamera = {} do
 	
 	function BaseCamera:UpdateDefaultSubjectDistance()
 		if self.portraitMode then
-			self.defaultSubjectDistance = math.clamp(PORTRAIT_DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+			self.defaultSubjectDistance = math.clamp(
+				PORTRAIT_DEFAULT_DISTANCE,
+				localPlayer.CameraMinZoomDistance,
+				localPlayer.CameraMaxZoomDistance
+			)
 		else
-			self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+			self.defaultSubjectDistance = math.clamp(
+				DEFAULT_DISTANCE,
+				localPlayer.CameraMinZoomDistance,
+				localPlayer.CameraMaxZoomDistance
+			)
 		end
 	end
 	
@@ -2142,9 +2165,9 @@ local BaseCamera = {} do
 	function BaseCamera:GamepadZoomPress()
 		local dist = self:GetCameraToSubjectDistance()
 		
-		if dist > (GAMEPAD_ZOOM_STEP_2 + GAMEPAD_ZOOM_STEP_3)/2 then
+		if dist > (GAMEPAD_ZOOM_STEP_2 + GAMEPAD_ZOOM_STEP_3) / 2 then
 			self:SetCameraToSubjectDistance(GAMEPAD_ZOOM_STEP_2)
-		elseif dist > (GAMEPAD_ZOOM_STEP_1 + GAMEPAD_ZOOM_STEP_2)/2 then
+		elseif dist > (GAMEPAD_ZOOM_STEP_1 + GAMEPAD_ZOOM_STEP_2) / 2 then
 			self:SetCameraToSubjectDistance(GAMEPAD_ZOOM_STEP_1)
 		else
 			self:SetCameraToSubjectDistance(GAMEPAD_ZOOM_STEP_3)
@@ -2248,7 +2271,12 @@ local BaseCamera = {} do
 				self:EnterFirstPerson()
 			end
 		else
-			local newSubjectDistance = math.clamp(desiredSubjectDistance, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+			local newSubjectDistance = math.clamp(
+				desiredSubjectDistance,
+				localPlayer.CameraMinZoomDistance,
+				localPlayer.CameraMaxZoomDistance
+			)
+			
 			if newSubjectDistance < FIRST_PERSON_DISTANCE_THRESHOLD then
 				self.currentSubjectDistance = 0.5
 				if not self.inFirstPerson then
@@ -2263,7 +2291,10 @@ local BaseCamera = {} do
 		end
 		
 		-- Pass target distance and zoom direction to the zoom controller
-		ZoomController.SetZoomParameters(self.currentSubjectDistance, math.sign(desiredSubjectDistance - lastSubjectDistance))
+		ZoomController.SetZoomParameters(
+			self.currentSubjectDistance,
+			math.sign(desiredSubjectDistance - lastSubjectDistance)
+		)
 		
 		-- Returned only for convenience to the caller to know the outcome
 		return self.currentSubjectDistance
@@ -2338,10 +2369,18 @@ local BaseCamera = {} do
 	function BaseCamera:CalculateNewLookCFrameFromArg(suppliedLookVector: Vector3?, rotateInput: Vector2): CFrame
 		local currLookVector: Vector3 = suppliedLookVector or self:GetCameraLookVector()
 		local currPitchAngle = math.asin(currLookVector.Y)
-		local yTheta = math.clamp(rotateInput.Y, -MAX_Y + currPitchAngle, -MIN_Y + currPitchAngle)
+		
+		local yTheta = math.clamp(
+			rotateInput.Y,
+			-MAX_Y + currPitchAngle,
+			-MIN_Y + currPitchAngle
+		)
+		
 		local constrainedRotateInput = Vector2.new(rotateInput.X, yTheta)
 		local startCFrame = CFrame.new(Vector3.zero, currLookVector)
-		local newLookCFrame = CFrame.Angles(0, -constrainedRotateInput.X, 0) * startCFrame * CFrame.Angles(-constrainedRotateInput.Y,0,0)
+		
+		local newLookCFrame = CFrame.Angles(0, -constrainedRotateInput.X, 0)
+			* startCFrame * CFrame.Angles(-constrainedRotateInput.Y, 0, 0)
 		return newLookCFrame
 	end
 	
@@ -2352,11 +2391,18 @@ local BaseCamera = {} do
 	
 	function BaseCamera:CalculateNewLookVectorVRFromArg(rotateInput: Vector2): Vector3
 		local subjectPosition: Vector3 = self:GetSubjectPosition()
-		local vecToSubject: Vector3 = (subjectPosition - (workspace.CurrentCamera :: Camera).CFrame.Position)
+		
+		local vecToSubject: Vector3 = (subjectPosition - (workspace.CurrentCamera).CFrame.Position)
 		local currLookVector: Vector3 = (vecToSubject * X1_Y0_Z1).unit
 		local vrRotateInput: Vector2 = Vector2.new(rotateInput.X, 0)
 		local startCFrame: CFrame = CFrame.new(Vector3.zero, currLookVector)
-		local yawRotatedVector: Vector3 = (CFrame.Angles(0, -vrRotateInput.X, 0) * startCFrame * CFrame.Angles(-vrRotateInput.Y,0,0)).LookVector
+		
+		local yawRotatedVector: Vector3 = (
+			CFrame.Angles(0, -vrRotateInput.X, 0)
+				* startCFrame
+				* CFrame.Angles(-vrRotateInput.Y, 0, 0)
+		).LookVector
+		
 		return (yawRotatedVector * X1_Y0_Z1).unit
 	end
 	
@@ -2503,16 +2549,29 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 			local zoom = self.currentSubjectDistance
 			
 			if CameraInput.getTogglePan() then
-				self.cameraToggleSpring.goal = math.clamp(CameraUtils.map(zoom, 0.5, self.FIRST_PERSON_DISTANCE_THRESHOLD, 0, 1), 0, 1)
+				self.cameraToggleSpring.goal = math.clamp(
+					CameraUtils.map(zoom, 0.5, self.FIRST_PERSON_DISTANCE_THRESHOLD, 0, 1),
+					0,
+					1
+				)
 			else
 				self.cameraToggleSpring.goal = 0
 			end
 			
-			local distanceOffset: number = math.clamp(CameraUtils.map(zoom, 0.5, 64, 0, 1), 0, 1) + 1
-			return Vector3.new(0, self.cameraToggleSpring:step(dt)*distanceOffset, 0)
+			local distanceOffset: number = math.clamp(
+				CameraUtils.map(zoom, 0.5, 64, 0, 1),
+				0,
+				1
+			) + 1
+			
+			return Vector3.new(
+				0,
+				self.cameraToggleSpring:step(dt) * distanceOffset,
+				0
+			)
 		end
 		
-		return Vector3.new()
+		return Vector3.zero
 	end
 	
 	-- Movement mode standardized to Enum.ComputerCameraMovementMode values
@@ -2591,27 +2650,41 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 					
 					local isInFirstPerson = self:IsInFirstPerson()
 					
-					if (isInVehicle or isOnASkateboard or (self.isFollowCamera and isClimbing)) and self.lastUpdate and humanoid and humanoid.Torso then
+					if (isInVehicle or isOnASkateboard or (self.isFollowCamera and isClimbing))
+					and self.lastUpdate
+					and humanoid
+					and humanoid.Torso then
+						
 						if isInFirstPerson then
-							if self.lastSubjectCFrame and (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
+							if self.lastSubjectCFrame
+							and (isInVehicle or isOnASkateboard)
+							and cameraSubject:IsA("BasePart") then
+								
 								local y = -CameraUtils.GetAngleBetweenXZVectors(self.lastSubjectCFrame.lookVector, cameraSubject.CFrame.lookVector)
 								if CameraUtils.IsFinite(y) then
-									rotateInput = rotateInput + Vector2.new(y, 0)
+									rotateInput += Vector2.new(y, 0)
 								end
+								
 								tweenSpeed = 0
 							end
 						elseif not userRecentlyPannedCamera then
 							local forwardVector = humanoid.Torso.CFrame.lookVector
-							tweenSpeed = math.clamp(tweenSpeed + tweenAcceleration * timeDelta, 0, tweenMaxSpeed)
+							
+							tweenSpeed = math.clamp(
+								tweenSpeed + tweenAcceleration * timeDelta,
+								0,
+								tweenMaxSpeed
+							)
 							
 							local percent = math.clamp(tweenSpeed * timeDelta, 0, 1)
+							
 							if self:IsInFirstPerson() and not (self.isFollowCamera and self.isClimbing) then
 								percent = 1
 							end
 							
 							local y = CameraUtils.GetAngleBetweenXZVectors(forwardVector, self:GetCameraLookVector())
 							if CameraUtils.IsFinite(y) and math.abs(y) > 0.0001 then
-								rotateInput = rotateInput + Vector2.new(y * percent, 0)
+								rotateInput += Vector2.new(y * percent, 0)
 							end
 						end
 						
@@ -2628,8 +2701,10 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 						local thetaCutoff = 0.4
 						
 						-- Check for NaNs
-						if CameraUtils.IsFinite(y) and math.abs(y) > 0.0001 and math.abs(y) > thetaCutoff * timeDelta then
-							rotateInput = rotateInput + Vector2.new(y, 0)
+						if CameraUtils.IsFinite(y)
+						and math.abs(y) > 0.0001
+						and math.abs(y) > thetaCutoff * timeDelta then
+							rotateInput += Vector2.new(y, 0)
 						end
 					end
 				end
@@ -2657,10 +2732,16 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 						vecToSubject = self:CalculateNewLookVectorFromArg(nil, rotateInput) * desiredDist
 						local newPos = cameraFocusP - vecToSubject
 						local desiredLookDir = camera.CFrame.lookVector
+						
 						if flaggedRotateInput.x ~= 0 then
 							desiredLookDir = vecToSubject
 						end
-						local lookAt = Vector3.new(newPos.x + desiredLookDir.x, newPos.y, newPos.z + desiredLookDir.z)
+						
+						local lookAt = Vector3.new(
+							newPos.x + desiredLookDir.x,
+							newPos.y,
+							newPos.z + desiredLookDir.z
+						)
 						
 						newCameraCFrame = CFrame.new(newPos, lookAt) + Vector3.new(0, cameraHeight, 0)
 					end
@@ -2676,15 +2757,20 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 				else
 					newCameraFocus = CFrame.new(subjectPosition)
 				end
-				newCameraCFrame = CFrame.new(newCameraFocus.p - (zoom * newLookVector), newCameraFocus.p) + Vector3.new(0, cameraHeight, 0)
+				
+				newCameraCFrame = CFrame.new(
+					newCameraFocus.p - (zoom * newLookVector),
+					newCameraFocus.p
+				) + Vector3.new(0, cameraHeight, 0)
 			end
 			
 			local toggleOffset = self:GetCameraToggleOffset(timeDelta)
-			newCameraFocus = newCameraFocus + toggleOffset
-			newCameraCFrame = newCameraCFrame + toggleOffset
+			newCameraFocus += toggleOffset
+			newCameraCFrame += toggleOffset
 			
 			self.lastCameraTransform = newCameraCFrame
 			self.lastCameraFocus = newCameraFocus
+			
 			if (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
 				self.lastSubjectCFrame = cameraSubject.CFrame
 			else
@@ -2717,13 +2803,11 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		2018 Camera Update - AllYourBlox
 	--]]
 	
-	--[[ Constants ]]--
 	local USE_STACKING_TRANSPARENCY = true	-- Multiple items between the subject and camera get transparency values that add up to TARGET_TRANSPARENCY
 	local TARGET_TRANSPARENCY = 0.75 -- Classic Invisicam's Value, also used by new invisicam for parts hit by head and torso rays
 	local TARGET_TRANSPARENCY_PERIPHERAL = 0.5 -- Used by new SMART_CIRCLE mode for items not hit by head and torso rays
 	
 	local MODE = {
-		--CUSTOM = 1, 		-- Retired, unused
 		LIMBS = 2, 			-- Track limbs
 		MOVEMENT = 3, 		-- Track movement
 		CORNERS = 4, 		-- Char model corners
@@ -2736,19 +2820,19 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	
 	local LIMB_TRACKING_SET = {
 		-- Body parts common to R15 and R6
-		['Head'] = true,
+		Head = true,
 		
 		-- Body parts unique to R6
-		['Left Arm'] = true,
-		['Right Arm'] = true,
-		['Left Leg'] = true,
-		['Right Leg'] = true,
+		["Left Arm"] = true,
+		["Right Arm"] = true,
+		["Left Leg"] = true,
+		["Right Leg"] = true,
 		
 		-- Body parts unique to R15
-		['LeftLowerArm'] = true,
-		['RightLowerArm'] = true,
-		['LeftUpperLeg'] = true,
-		['RightUpperLeg'] = true
+		LeftLowerArm = true,
+		RightLowerArm = true,
+		LeftUpperLeg = true,
+		RightUpperLeg = true
 	}
 	
 	local CORNER_FACTORS = {
@@ -2770,7 +2854,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		local typeString = ''
 		for _, typeName in pairs({...}) do
 			allowedTypes[typeName] = true
-			typeString = typeString .. (typeString == '' and '' or ' or ') .. typeName
+			typeString ..= (typeString == '' and '' or ' or ') .. typeName
 		end
 		local theType = type(param)
 		assert(allowedTypes[theType], typeString .. " type expected, got: " .. theType)
@@ -2778,7 +2862,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	
 	-- Helper function for Determinant of 3x3, not in CameraUtils for performance reasons
 	local function Det3x3(a: number,b: number,c: number,d: number,e: number,f: number,g: number,h: number,i: number): number
-		return (a*(e*i-f*h)-b*(d*i-f*g)+c*(d*h-e*g))
+		return a * (e*i - f*h) - b * (d*i - f*g) + c * (d*h - e*g)
 	end
 	
 	-- Smart Circle mode needs the intersection of 2 rays that are known to be in the same plane
@@ -2790,21 +2874,22 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		local d1 = p1.X - p0.X
 		local d2 = p1.Y - p0.Y
 		local d3 = p1.Z - p0.Z
+		
 		local denom = Det3x3(v0.X,-v1.X,v2.X,v0.Y,-v1.Y,v2.Y,v0.Z,-v1.Z,v2.Z)
 		
-		if (denom == 0) then
+		if denom == 0 then
 			return Vector3.zero -- No solution (rays are parallel)
 		end
 		
-		local t0 = Det3x3(d1,-v1.X,v2.X,d2,-v1.Y,v2.Y,d3,-v1.Z,v2.Z) / denom
-		local t1 = Det3x3(v0.X,d1,v2.X,v0.Y,d2,v2.Y,v0.Z,d3,v2.Z) / denom
+		local t0 = Det3x3(d1, -v1.X, v2.X, d2, -v1.Y, v2.Y, d3, -v1.Z, v2.Z) / denom
+		local t1 = Det3x3(v0.X, d1, v2.X, v0.Y, d2, v2.Y, v0.Z, d3, v2.Z) / denom
 		local s0 = p0 + t0 * v0
 		local s1 = p1 + t1 * v1
-		local s = s0 + 0.5 * ( s1 - s0 )
+		local s = s0 + 0.5 * (s1 - s0)
 		
 		-- 0.25 studs is a threshold for deciding if the rays are
 		-- close enough to be considered intersecting, found through testing
-		if (s1-s0).Magnitude < 0.25 then
+		if (s1 - s0).Magnitude < 0.25 then
 			return s
 		else
 			return Vector3.zero
@@ -2856,19 +2941,19 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		return Enum.DevCameraOcclusionMode.Invisicam
 	end
 	
-	--[[ Module functions ]]--
 	function Invisicam:LimbBehavior(castPoints)
 		for limb, _ in pairs(self.trackedLimbs) do
-			castPoints[#castPoints + 1] = limb.Position
+			table.insert(castPoints, limb.Position)
 		end
 	end
 	
 	function Invisicam:MoveBehavior(castPoints)
 		for i = 1, MOVE_CASTS do
-			local position: Vector3, velocity: Vector3 = self.humanoidRootPart.Position, self.humanoidRootPart.Velocity
+			local position: Vector3 = self.humanoidRootPart.Position
+			local velocity: Vector3 = self.humanoidRootPart.Velocity
 			local horizontalSpeed: number = Vector3.new(velocity.X, 0, velocity.Z).Magnitude / 2
 			local offsetVector: Vector3 = (i - 1) * self.humanoidRootPart.CFrame.lookVector :: Vector3 * horizontalSpeed
-			castPoints[#castPoints + 1] = position + offsetVector
+			table.insert(castPoints, position + offsetVector)
 		end
 	end
 	
@@ -2877,9 +2962,9 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		local centerPoint: Vector3 = cframe.Position
 		local rotation = cframe - centerPoint
 		local halfSize = self.char:GetExtentsSize() / 2 --NOTE: Doesn't update w/ limb animations
-		castPoints[#castPoints + 1] = centerPoint
+		table.insert(castPoints, centerPoint)
 		for i = 1, #CORNER_FACTORS do
-			castPoints[#castPoints + 1] = centerPoint + (rotation * (halfSize * CORNER_FACTORS[i]))
+			table.insert(castPoints, centerPoint + (rotation * (halfSize * CORNER_FACTORS[i])))
 		end
 	end
 	
@@ -2891,11 +2976,13 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 			local camCFrame: CFrame = self.camera.CoordinateFrame
 			cframe = camCFrame - camCFrame.Position + self.humanoidRootPart.Position
 		end
-		castPoints[#castPoints + 1] = cframe.Position
+		
+		table.insert(castPoints, cframe.Position)
+		
 		for i = 0, CIRCLE_CASTS - 1 do
 			local angle = (2 * math.pi / CIRCLE_CASTS) * i
 			local offset = 3 * Vector3.new(math.cos(angle), math.sin(angle), 0)
-			castPoints[#castPoints + 1] = cframe * offset
+			table.insert(castPoints, cframe * offset)
 		end
 	end
 	
@@ -2909,28 +2996,42 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		local torsoRight = self.torsoPart.CFrame.rightVector.unit
 		
 		-- Torso cross of points for interior coverage
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p + torsoUp
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p - torsoUp
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p + torsoRight
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p - torsoRight
+		table.insert(castPoints, self.torsoPart.CFrame.p)
+		table.insert(castPoints, self.torsoPart.CFrame.p + torsoUp)
+		table.insert(castPoints, self.torsoPart.CFrame.p - torsoUp)
+		table.insert(castPoints, self.torsoPart.CFrame.p + torsoRight)
+		table.insert(castPoints, self.torsoPart.CFrame.p - torsoRight)
+		
 		if self.headPart then
-			castPoints[#castPoints + 1] = self.headPart.CFrame.p
+			table.insert(castPoints, self.headPart.CFrame.p)
 		end
 		
-		local cframe = CFrame.new(Vector3.zero,Vector3.new(self.camera.CoordinateFrame.lookVector.X,0,self.camera.CoordinateFrame.lookVector.Z))
-		local centerPoint = (self.torsoPart and self.torsoPart.Position or self.humanoidRootPart.Position)
+		local cframe = CFrame.new(
+			Vector3.zero,
+			Vector3.new(
+				self.camera.CoordinateFrame.lookVector.X,
+				0,
+				self.camera.CoordinateFrame.lookVector.Z
+			)
+		)
+		
+		local centerPoint = self.torsoPart and self.torsoPart.Position or self.humanoidRootPart.Position
 		
 		local partsWhitelist = {self.torsoPart}
+		
 		if self.headPart then
-			partsWhitelist[#partsWhitelist + 1] = self.headPart
+			table.insert(castPoints, self.headPart)
 		end
 		
 		for i = 1, CHAR_OUTLINE_CASTS do
-			local angle = (2 * math.pi * i / CHAR_OUTLINE_CASTS)
+			local angle = 2 * math.pi * i / CHAR_OUTLINE_CASTS
 			local offset = cframe * (3 * Vector3.new(math.cos(angle), math.sin(angle), 0))
 			
-			offset = Vector3.new(offset.X, math.max(offset.Y, -2.25), offset.Z)
+			offset = Vector3.new(
+				offset.X,
+				math.max(offset.Y, -2.25),
+				offset.Z
+			)
 			
 			local ray = Ray.new(centerPoint + offset, -3 * offset)
 			local hit, hitPoint = workspace:FindPartOnRayWithWhitelist(ray, partsWhitelist, false)
@@ -2938,7 +3039,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 			if hit then
 				-- Use hit point as the cast point, but nudge it slightly inside the character so that bumping up against
 				-- walls is less likely to cause a transparency glitch
-				castPoints[#castPoints + 1] = hitPoint + 0.2 * (centerPoint - hitPoint).unit
+				table.insert(castPoints, hitPoint + 0.2 * (centerPoint - hitPoint).unit)
 			end
 		end
 	end
@@ -2950,17 +3051,18 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		-- SMART_CIRCLE mode includes rays to head and 5 to the torso.
 		-- Hands, arms, legs and feet are not included since they
 		-- are not canCollide and can therefore go inside of parts
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p + torsoUp
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p - torsoUp
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p + torsoRight
-		castPoints[#castPoints + 1] = self.torsoPart.CFrame.p - torsoRight
+		
+		table.insert(castPoints, self.torsoPart.CFrame.p)
+		table.insert(castPoints, self.torsoPart.CFrame.p + torsoUp)
+		table.insert(castPoints, self.torsoPart.CFrame.p - torsoUp)
+		table.insert(castPoints, self.torsoPart.CFrame.p + torsoRight)
+		table.insert(castPoints, self.torsoPart.CFrame.p - torsoRight)
 		if self.headPart then
-			castPoints[#castPoints + 1] = self.headPart.CFrame.p
+			table.insert(castPoints, self.headPart.CFrame.p)
 		end
 		
 		local cameraOrientation = self.camera.CFrame - self.camera.CFrame.p
-		local torsoPoint = Vector3.new(0,0.5,0) + (self.torsoPart and self.torsoPart.Position or self.humanoidRootPart.Position)
+		local torsoPoint = Vector3.new(0, 0.5, 0) + (self.torsoPart and self.torsoPart.Position or self.humanoidRootPart.Position)
 		local radius = 2.5
 		
 		-- This loop first calculates points in a circle of radius 2.5 around the torso of the character, in the
@@ -3002,7 +3104,8 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 					
 					if castPoint.Magnitude > 0 then
 						local ray = Ray.new(hprime, castPoint - hprime)
-						local hit, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
+						local hit, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(
+							ray, {self.char}, false, false)
 						
 						if hit then
 							local hprime2 = hitPoint + 0.1 * hitNormal.unit
@@ -3016,7 +3119,8 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 				end
 				
 				local ray = Ray.new(torsoPoint, (castPoint - torsoPoint))
-				local hit, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(ray, {self.char}, false, false )
+				local hit, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(
+					ray, {self.char}, false, false)
 				
 				if hit then
 					local castPoint2 = hitPoint - 0.1 * (castPoint - torsoPoint).unit
@@ -3024,7 +3128,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 				end
 			end
 			
-			castPoints[#castPoints + 1] = castPoint
+			table.insert(castPoints, castPoint)
 		end
 	end
 	
@@ -3050,6 +3154,7 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 			self.childAddedConn:Disconnect()
 			self.childAddedConn = nil
 		end
+		
 		if self.childRemovedConn then
 			self.childRemovedConn:Disconnect()
 			self.childRemovedConn = nil
@@ -3203,9 +3308,16 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 				end
 			end
 			
-			if (hitPartCount > 0) then
-				perPartTransparencyHeadTorsoHits = math.pow( ((0.5 * TARGET_TRANSPARENCY) + (0.5 * TARGET_TRANSPARENCY / hitPartCount)), 1 / hitPartCount )
-				perPartTransparencyOtherHits = math.pow( ((0.5 * TARGET_TRANSPARENCY_PERIPHERAL) + (0.5 * TARGET_TRANSPARENCY_PERIPHERAL / hitPartCount)), 1 / hitPartCount )
+			if hitPartCount > 0 then
+				perPartTransparencyHeadTorsoHits = math.pow(
+					(0.5 * TARGET_TRANSPARENCY) + (0.5 * TARGET_TRANSPARENCY / hitPartCount),
+					1 / hitPartCount
+				)
+				
+				perPartTransparencyOtherHits = math.pow(
+					(0.5 * TARGET_TRANSPARENCY_PERIPHERAL) + (0.5 * TARGET_TRANSPARENCY_PERIPHERAL / hitPartCount),
+					1 / hitPartCount
+				)
 			end
 		end
 		
@@ -3218,7 +3330,8 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		for i = 1, #hitParts do
 			local hitPart = hitParts[i]
 			
-			partTargetTransparency[hitPart] =headTorsoRayHitParts[hitPart] and perPartTransparencyHeadTorsoHits or perPartTransparencyOtherHits
+			partTargetTransparency[hitPart] = headTorsoRayHitParts[hitPart]
+				and perPartTransparencyHeadTorsoHits or perPartTransparencyOtherHits
 			
 			-- If the part is not already as transparent or more transparent than what invisicam requires, add it to the list of
 			-- parts to be modified by invisicam
@@ -3241,7 +3354,9 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 		for hitPart, originalLTM in pairs(self.savedHits) do
 			if currentHits[hitPart] then
 				-- LocalTransparencyModifier gets whatever value is required to print the part's total transparency to equal perPartTransparency
-				hitPart.LocalTransparencyModifier = (hitPart.Transparency < 1) and ((partTargetTransparency[hitPart] - hitPart.Transparency) / (1.0 - hitPart.Transparency)) or 0
+				hitPart.LocalTransparencyModifier = (hitPart.Transparency < 1)
+					and ((partTargetTransparency[hitPart] - hitPart.Transparency) / (1.0 - hitPart.Transparency))
+					or 0
 			else -- Restore original pre-invisicam value of LTM
 				hitPart.LocalTransparencyModifier = originalLTM
 				self.savedHits[hitPart] = nil
@@ -3311,7 +3426,10 @@ local LegacyCamera = setmetatable({}, BaseCamera) do
 				local newLookVector = self:CalculateNewLookVectorFromArg(nil, CameraInput.getRotation())
 				
 				newCameraFocus = camera.Focus -- Fixed camera does not change focus
-				newCameraCFrame = CFrame.new(camera.CFrame.p, camera.CFrame.p + (distanceToSubject * newLookVector))
+				newCameraCFrame = CFrame.new(
+					camera.CFrame.p,
+					camera.CFrame.p + (distanceToSubject * newLookVector)
+				)
 			end
 			
 		elseif self.cameraType == Enum.CameraType.Attach then
@@ -3319,10 +3437,16 @@ local LegacyCamera = setmetatable({}, BaseCamera) do
 			local cameraPitch = camera.CFrame:ToEulerAnglesYXZ()
 			local _, subjectYaw = subjectCFrame:ToEulerAnglesYXZ()
 			
-			cameraPitch = math.clamp(cameraPitch - CameraInput.getRotation().Y, -PITCH_LIMIT, PITCH_LIMIT)
+			cameraPitch = math.clamp(
+				cameraPitch - CameraInput.getRotation().Y,
+				-PITCH_LIMIT,
+				PITCH_LIMIT
+			)
 			
-			newCameraFocus = CFrame.new(subjectCFrame.p)*CFrame.fromEulerAnglesYXZ(cameraPitch, subjectYaw, 0)
-			newCameraCFrame = newCameraFocus*CFrame.new(0, 0, self:StepZoom())
+			newCameraFocus = CFrame.new(subjectCFrame.p)
+				* CFrame.fromEulerAnglesYXZ(cameraPitch, subjectYaw, 0)
+			
+			newCameraCFrame = newCameraFocus * CFrame.new(0, 0, self:StepZoom())
 			
 		elseif self.cameraType == Enum.CameraType.Watch then
 			if subjectPosition and localPlayer and camera then
@@ -3456,7 +3580,7 @@ local MouseLockController = {} do
 			offsetValueObj = Instance.new("Vector3Value")
 			assert(offsetValueObj, "")
 			offsetValueObj.Name = "CameraOffset"
-			offsetValueObj.Value = Vector3.new(1.75,0,0) -- Legacy Default Value
+			offsetValueObj.Value = Vector3.new(1.75, 0, 0) -- Legacy Default Value
 			offsetValueObj.Parent = script
 		end
 		
@@ -3472,7 +3596,10 @@ local MouseLockController = {} do
 		local devMovementModeIsScriptable = localPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
 		local userHasMouseLockModeEnabled = GameSettings.ControlMode == Enum.ControlMode.MouseLockSwitch
 		local userHasClickToMoveEnabled =  GameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove
-		local MouseLockAvailable = devAllowsMouseLock and userHasMouseLockModeEnabled and not userHasClickToMoveEnabled and not devMovementModeIsScriptable
+		local MouseLockAvailable = devAllowsMouseLock
+			and userHasMouseLockModeEnabled
+			and not userHasClickToMoveEnabled
+			and not devMovementModeIsScriptable
 		
 		if MouseLockAvailable~=self.enabled then
 			self:EnableMouseLock(MouseLockAvailable)
@@ -3480,15 +3607,19 @@ local MouseLockController = {} do
 	end
 	
 	function MouseLockController:OnBoundKeysObjectChanged(newValue: string)
-		self.boundKeys = {} -- Overriding defaults, note: possibly with nothing at all if boundKeysObj.Value is "" or contains invalid values
+		-- Overriding defaults, note: possibly with nothing at
+		-- all if boundKeysObj.Value is "" or contains invalid values
+		self.boundKeys = {}
+		
 		for token in string.gmatch(newValue,"[^%s,]+") do
 			for _, keyEnum in pairs(Enum.KeyCode:GetEnumItems()) do
 				if token == keyEnum.Name then
-					self.boundKeys[#self.boundKeys+1] = keyEnum :: Enum.KeyCode
+					table.insert(self.boundKeys, keyEnum)
 					break
 				end
 			end
 		end
+		
 		self:UnbindContextActions()
 		self:BindContextActions()
 	end
@@ -3528,9 +3659,12 @@ local MouseLockController = {} do
 	end
 	
 	function MouseLockController:BindContextActions()
-		ContextActionService:BindActionAtPriority(CONTEXT_ACTION_NAME, function(name, state, input)
+		local functionToBind = function(name, state, input)
 			return self:DoMouseLockSwitch(name, state, input)
-		end, false, MOUSELOCK_ACTION_PRIORITY, unpack(self.boundKeys))
+		end
+		
+		ContextActionService:BindActionAtPriority(CONTEXT_ACTION_NAME,
+			functionToBind, false, MOUSELOCK_ACTION_PRIORITY, unpack(self.boundKeys))
 	end
 	
 	function MouseLockController:UnbindContextActions()
@@ -3589,16 +3723,16 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 	local MAX_ALLOWED_ELEVATION_DEG = 80
 	
 	local externalProperties = {}
-	externalProperties["InitialDistance"]  = 25
-	externalProperties["MinDistance"]      = 10
-	externalProperties["MaxDistance"]      = 100
-	externalProperties["InitialElevation"] = 35
-	externalProperties["MinElevation"]     = 35
-	externalProperties["MaxElevation"]     = 35
-	externalProperties["ReferenceAzimuth"] = -45	-- Angle around the Y axis where the camera starts. -45 offsets the camera in the -X and +Z directions equally
-	externalProperties["CWAzimuthTravel"]  = 90	-- How many degrees the camera is allowed to rotate from the reference position, CW as seen from above
-	externalProperties["CCWAzimuthTravel"] = 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
-	externalProperties["UseAzimuthLimits"] = false -- Full rotation around Y axis available by default
+	externalProperties.InitialDistance  = 25
+	externalProperties.MinDistance      = 10
+	externalProperties.MaxDistance      = 100
+	externalProperties.InitialElevation = 35
+	externalProperties.MinElevation     = 35
+	externalProperties.MaxElevation     = 35
+	externalProperties.ReferenceAzimuth = -45	-- Angle around the Y axis where the camera starts. -45 offsets the camera in the -X and +Z directions equally
+	externalProperties.CWAzimuthTravel  = 90	-- How many degrees the camera is allowed to rotate from the reference position, CW as seen from above
+	externalProperties.CCWAzimuthTravel = 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
+	externalProperties.UseAzimuthLimits = false -- Full rotation around Y axis available by default
 	
 	
 	function OrbitalCamera.new()
@@ -3625,16 +3759,16 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		self.lastUserPanCamera = tick()
 		
 		self.externalProperties = {}
-		self.externalProperties["InitialDistance"] 	= 25
-		self.externalProperties["MinDistance"] 		= 10
-		self.externalProperties["MaxDistance"] 		= 100
-		self.externalProperties["InitialElevation"] 	= 35
-		self.externalProperties["MinElevation"] 		= 35
-		self.externalProperties["MaxElevation"] 		= 35
-		self.externalProperties["ReferenceAzimuth"] 	= -45	-- Angle around the Y axis where the camera starts. -45 offsets the camera in the -X and +Z directions equally
-		self.externalProperties["CWAzimuthTravel"] 	= 90	-- How many degrees the camera is allowed to rotate from the reference position, CW as seen from above
-		self.externalProperties["CCWAzimuthTravel"] 	= 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
-		self.externalProperties["UseAzimuthLimits"] 	= false -- Full rotation around Y axis available by default
+		self.externalProperties.InitialDistance 	= 25
+		self.externalProperties.MinDistance 		= 10
+		self.externalProperties.MaxDistance 		= 100
+		self.externalProperties.InitialElevation 	= 35
+		self.externalProperties.MinElevation 		= 35
+		self.externalProperties.MaxElevation 		= 35
+		self.externalProperties.ReferenceAzimuth 	= -45	-- Angle around the Y axis where the camera starts. -45 offsets the camera in the -X and +Z directions equally
+		self.externalProperties.CWAzimuthTravel 	= 90	-- How many degrees the camera is allowed to rotate from the reference position, CW as seen from above
+		self.externalProperties.CCWAzimuthTravel 	= 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
+		self.externalProperties.UseAzimuthLimits 	= false -- Full rotation around Y axis available by default
 		self:LoadNumberValueParameters()
 		
 		return self
@@ -3668,9 +3802,18 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 	end
 	
 	function OrbitalCamera:SetAndBoundsCheckAzimuthValues()
-		self.minAzimuthAbsoluteRad = math.rad(self.externalProperties["ReferenceAzimuth"]) - math.abs(math.rad(self.externalProperties["CWAzimuthTravel"]))
-		self.maxAzimuthAbsoluteRad = math.rad(self.externalProperties["ReferenceAzimuth"]) + math.abs(math.rad(self.externalProperties["CCWAzimuthTravel"]))
-		self.useAzimuthLimits = self.externalProperties["UseAzimuthLimits"]
+		self.minAzimuthAbsoluteRad = math.rad(
+			self.externalProperties.ReferenceAzimuth)
+			- math.abs(math.rad(self.externalProperties.CWAzimuthTravel)
+		)
+		
+		self.maxAzimuthAbsoluteRad = math.rad(
+			self.externalProperties.ReferenceAzimuth)
+			+ math.abs(math.rad(self.externalProperties.CCWAzimuthTravel)
+		)
+		
+		self.useAzimuthLimits = self.externalProperties.UseAzimuthLimits
+		
 		if self.useAzimuthLimits then
 			self.curAzimuthRad = math.max(self.curAzimuthRad, self.minAzimuthAbsoluteRad)
 			self.curAzimuthRad = math.min(self.curAzimuthRad, self.maxAzimuthAbsoluteRad)
@@ -3683,8 +3826,8 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		-- is changed, both of the internal values in radians are recalculated. This allows for
 		-- A developer to change the values in any order and for the end results to be that the
 		-- internal values adjust to match intent as best as possible.
-		local minElevationDeg = math.max(self.externalProperties["MinElevation"], MIN_ALLOWED_ELEVATION_DEG)
-		local maxElevationDeg = math.min(self.externalProperties["MaxElevation"], MAX_ALLOWED_ELEVATION_DEG)
+		local minElevationDeg = math.max(self.externalProperties.MinElevation, MIN_ALLOWED_ELEVATION_DEG)
+		local maxElevationDeg = math.min(self.externalProperties.MaxElevation, MAX_ALLOWED_ELEVATION_DEG)
 		
 		-- Set internal values in radians
 		self.minElevationRad = math.rad(math.min(minElevationDeg, maxElevationDeg))
@@ -3717,9 +3860,9 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		self:LoadOrCreateNumberValueParameter("UseAzimuthLimits", "BoolValue", self.SetAndBoundsCheckAzimuthValues)
 		
 		-- Internal values set (in radians, from degrees), plus sanitization
-		self.curAzimuthRad = math.rad(self.externalProperties["ReferenceAzimuth"])
-		self.curElevationRad = math.rad(self.externalProperties["InitialElevation"])
-		self.curDistance = self.externalProperties["InitialDistance"]
+		self.curAzimuthRad = math.rad(self.externalProperties.ReferenceAzimuth)
+		self.curElevationRad = math.rad(self.externalProperties.InitialElevation)
+		self.curDistance = self.externalProperties.InitialDistance
 		
 		self:SetAndBoundsCheckAzimuthValues()
 		self:SetAndBoundsCheckElevationValues()
@@ -3767,10 +3910,22 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 	function OrbitalCamera:CalculateNewLookVector(suppliedLookVector: Vector3, xyRotateVector: Vector2): Vector3
 		local currLookVector: Vector3 = suppliedLookVector or self:GetCameraLookVector()
 		local currPitchAngle: number = math.asin(currLookVector.Y)
-		local yTheta: number = math.clamp(xyRotateVector.Y, currPitchAngle - math.rad(MAX_ALLOWED_ELEVATION_DEG), currPitchAngle - math.rad(MIN_ALLOWED_ELEVATION_DEG))
+		
+		local yTheta: number = math.clamp(
+			xyRotateVector.Y,
+			currPitchAngle - math.rad(MAX_ALLOWED_ELEVATION_DEG),
+			currPitchAngle - math.rad(MIN_ALLOWED_ELEVATION_DEG)
+		)
+		
 		local constrainedRotateInput: Vector2 = Vector2.new(xyRotateVector.X, yTheta)
 		local startCFrame: CFrame = CFrame.new(Vector3.zero, currLookVector)
-		local newLookVector: Vector3 = (CFrame.Angles(0, -constrainedRotateInput.X, 0) * startCFrame * CFrame.Angles(-constrainedRotateInput.Y,0,0)).LookVector
+		
+		local newLookVector: Vector3 = (
+			CFrame.Angles(0, -constrainedRotateInput.X, 0)
+			* startCFrame
+			* CFrame.Angles(-constrainedRotateInput.Y,0,0)
+		).LookVector
+		
 		return newLookVector
 	end
 	
@@ -3783,8 +3938,8 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		local newCameraCFrame = camera.CFrame
 		local newCameraFocus = camera.Focus
 		local cameraSubject = camera and camera.CameraSubject
-		local isInVehicle = cameraSubject and cameraSubject:IsA('VehicleSeat')
-		local isOnASkateboard = cameraSubject and cameraSubject:IsA('SkateboardPlatform')
+		local isInVehicle = cameraSubject and cameraSubject:IsA("VehicleSeat")
+		local isOnASkateboard = cameraSubject and cameraSubject:IsA("SkateboardPlatform")
 		
 		if self.lastUpdate == nil or timeDelta > 1 then
 			self.lastCameraTransform = nil
@@ -3821,14 +3976,23 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 					local desiredDist = math.min(distToSubject, self.currentSubjectDistance)
 					
 					-- Note that CalculateNewLookVector is overridden from BaseCamera
-					vecToSubject = self:CalculateNewLookVector(vecToSubject.Unit * X1_Y0_Z1, Vector2.new(flaggedRotateInput.X, 0)) * desiredDist
+					vecToSubject = self:CalculateNewLookVector(
+						vecToSubject.Unit * X1_Y0_Z1,
+						Vector2.new(flaggedRotateInput.X, 0)
+					) * desiredDist
 					
 					local newPos = cameraFocusP - vecToSubject
 					local desiredLookDir = camera.CFrame.LookVector
 					if flaggedRotateInput.X ~= 0 then
 						desiredLookDir = vecToSubject
 					end
-					local lookAt = Vector3.new(newPos.X + desiredLookDir.X, newPos.Y, newPos.Z + desiredLookDir.Z)
+					
+					local lookAt = Vector3.new(
+						newPos.X + desiredLookDir.X,
+						newPos.Y,
+						newPos.Z + desiredLookDir.Z
+					)
+					
 					newCameraCFrame = CFrame.new(newPos, lookAt) + Vector3.new(0, cameraHeight, 0)
 				end
 			else
@@ -3836,14 +4000,27 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 				self.curAzimuthRad = self.curAzimuthRad - flaggedRotateInput.X
 				
 				if self.useAzimuthLimits then
-					self.curAzimuthRad = math.clamp(self.curAzimuthRad, self.minAzimuthAbsoluteRad, self.maxAzimuthAbsoluteRad)
+					self.curAzimuthRad = math.clamp(
+						self.curAzimuthRad,
+						self.minAzimuthAbsoluteRad,
+						self.maxAzimuthAbsoluteRad
+					)
 				else
-					self.curAzimuthRad = (self.curAzimuthRad ~= 0) and (math.sign(self.curAzimuthRad) * (math.abs(self.curAzimuthRad) % TAU)) or 0
+					self.curAzimuthRad = (self.curAzimuthRad ~= 0)
+						and (math.sign(self.curAzimuthRad) * (math.abs(self.curAzimuthRad) % TAU))
+						or 0
 				end
 				
-				self.curElevationRad = math.clamp(self.curElevationRad + flaggedRotateInput.Y, self.minElevationRad, self.maxElevationRad)
+				self.curElevationRad = math.clamp(
+					self.curElevationRad + flaggedRotateInput.Y,
+					self.minElevationRad,
+					self.maxElevationRad
+				)
 				
-				local cameraPosVector = self.currentSubjectDistance * ( CFrame.fromEulerAnglesYXZ( -self.curElevationRad, self.curAzimuthRad, 0 ) * UNIT_Z )
+				local cameraPosVector = self.currentSubjectDistance
+					* ( CFrame.fromEulerAnglesYXZ(-self.curElevationRad, self.curAzimuthRad, 0)
+						* UNIT_Z )
+				
 				local camPos = subjectPosition + cameraPosVector
 				
 				newCameraCFrame = CFrame.new(camPos, subjectPosition)
@@ -3851,7 +4028,7 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 			
 			self.lastCameraTransform = newCameraCFrame
 			self.lastCameraFocus = newCameraFocus
-			if (isInVehicle or isOnASkateboard) and cameraSubject:IsA('BasePart') then
+			if (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
 				self.lastSubjectCFrame = cameraSubject.CFrame
 			else
 				self.lastSubjectCFrame = nil
@@ -3949,15 +4126,18 @@ local Poppercam = setmetatable({}, BaseOcclusion) do
 	end
 	
 	function Poppercam:Update(renderDt, desiredCameraCFrame, desiredCameraFocus, cameraController)
-		local rotatedFocus = CFrame.new(desiredCameraFocus.p, desiredCameraCFrame.p)*CFrame.new(
+		local rotatedFocus = CFrame.new(desiredCameraFocus.p, desiredCameraCFrame.p)
+		* CFrame.new(
 			0, 0, 0,
 			-1, 0, 0,
 			0, 1, 0,
 			0, 0, -1
 		)
+		
 		local extrapolation = self.focusExtrapolator:Step(renderDt, rotatedFocus)
 		local zoom = ZoomController.Update(renderDt, rotatedFocus, extrapolation)
-		return rotatedFocus*CFrame.new(0, 0, zoom), desiredCameraFocus
+		
+		return rotatedFocus * CFrame.new(0, 0, zoom), desiredCameraFocus
 	end
 	
 	-- Called when character is added
@@ -4002,11 +4182,11 @@ local TransparencyController = {} do
 	function TransparencyController:HasToolAncestor(object: Instance)
 		if object.Parent == nil then return false end
 		assert(object.Parent, "")
-		return object.Parent:IsA('Tool') or self:HasToolAncestor(object.Parent)
+		return object.Parent:IsA("Tool") or self:HasToolAncestor(object.Parent)
 	end
 	
 	function TransparencyController:IsValidPartToModify(part: BasePart)
-		if part:IsA('BasePart') or part:IsA('Decal') then
+		if part:IsA("BasePart") or part:IsA("Decal") then
 			return not self:HasToolAncestor(part)
 		end
 		return false
@@ -4060,35 +4240,53 @@ local TransparencyController = {} do
 				self.cachedParts[object] = true
 				self.transparencyDirty = true
 				-- There is now a tool under the character
-			elseif object:IsA('Tool') then
-				if self.toolDescendantAddedConns[object] then self.toolDescendantAddedConns[object]:Disconnect() end
-				self.toolDescendantAddedConns[object] = object.DescendantAdded:Connect(function(toolChild)
-					self.cachedParts[toolChild] = nil
-					if toolChild:IsA('BasePart') or toolChild:IsA('Decal') then
-						-- Reset the transparency
-						toolChild.LocalTransparencyModifier = 0
-					end
-				end)
-				if self.toolDescendantRemovingConns[object] then self.toolDescendantRemovingConns[object]:disconnect() end
-				self.toolDescendantRemovingConns[object] = object.DescendantRemoving:Connect(function(formerToolChild)
-					wait() -- wait for new parent
-					if character and formerToolChild and formerToolChild:IsDescendantOf(character) then
-						if self:IsValidPartToModify(formerToolChild) then
-							self.cachedParts[formerToolChild] = true
-							self.transparencyDirty = true
+			elseif object:IsA("Tool") then
+				if self.toolDescendantAddedConns[object] then
+					self.toolDescendantAddedConns[object]:Disconnect()
+				end
+				
+				self.toolDescendantAddedConns[object] =
+					object.DescendantAdded:Connect(function(toolChild)
+						self.cachedParts[toolChild] = nil
+						if toolChild:IsA("BasePart") or toolChild:IsA("Decal") then
+							-- Reset the transparency
+							toolChild.LocalTransparencyModifier = 0
 						end
-					end
-				end)
+					end)
+				
+				if self.toolDescendantRemovingConns[object] then
+					self.toolDescendantRemovingConns[object]:Disconnect()
+				end
+				
+				self.toolDescendantRemovingConns[object] =
+					object.DescendantRemoving:Connect(function(formerToolChild)
+						wait() -- wait for new parent
+						if character
+						and formerToolChild
+						and formerToolChild:IsDescendantOf(character) then
+							if self:IsValidPartToModify(formerToolChild) then
+								self.cachedParts[formerToolChild] = true
+								self.transparencyDirty = true
+							end
+						end
+					end)
+				
 			end
 		end)
-		if self.descendantRemovingConn then self.descendantRemovingConn:disconnect() end
-		self.descendantRemovingConn = character.DescendantRemoving:connect(function(object)
-			if self.cachedParts[object] then
-				self.cachedParts[object] = nil
-				-- Reset the transparency
-				object.LocalTransparencyModifier = 0
-			end
-		end)
+		
+		if self.descendantRemovingConn then
+			self.descendantRemovingConn:Disconnect()
+		end
+		
+		self.descendantRemovingConn =
+			character.DescendantRemoving:Connect(function(object)
+				if self.cachedParts[object] then
+					self.cachedParts[object] = nil
+					-- Reset the transparency
+					object.LocalTransparencyModifier = 0
+				end
+			end)
+		
 		self:CachePartsRecursive(character)
 	end
 	
@@ -4100,13 +4298,16 @@ local TransparencyController = {} do
 	end
 	
 	function TransparencyController:SetSubject(subject)
-		local character = nil
+		local character
+		
 		if subject and subject:IsA("Humanoid") then
 			character = subject.Parent
 		end
+		
 		if subject and subject:IsA("VehicleSeat") and subject.Occupant then
 			character = subject.Occupant.Parent
 		end
+		
 		if character then
 			self:SetupTransparency(character)
 		else
@@ -4119,8 +4320,8 @@ local TransparencyController = {} do
 		
 		if currentCamera and self.enabled then
 			-- calculate goal transparency based on distance
-			local distance = (currentCamera.Focus.p - currentCamera.CoordinateFrame.p).magnitude
-			local transparency = (distance<2) and (1.0-(distance-0.5)/1.5) or 0 -- (7 - distance) / 5
+			local distance = (currentCamera.Focus.p - currentCamera.CoordinateFrame.p).Magnitude
+			local transparency = (distance < 2) and (1.0 - (distance - 0.5) / 1.5) or 0 -- (7 - distance) / 5
 			if transparency < 0.5 then -- too far, don't control transparency
 				transparency = 0
 			end
@@ -4165,7 +4366,7 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	local VR_ZOOM = 7
 	local VR_FADE_SPEED = 10 -- 1/10 second
 	local VR_SCREEN_EGDE_BLEND_TIME = 0.14
-	local VR_SEAT_OFFSET = Vector3.new(0,4,0)
+	local VR_SEAT_OFFSET = Vector3.new(0, 4, 0)
 	
 	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
 	
@@ -4174,8 +4375,18 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 		
 		-- distance is different in VR
 		self.defaultDistance = VR_ZOOM
-		self.defaultSubjectDistance = math.clamp(self.defaultDistance, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
-		self.currentSubjectDistance = math.clamp(self.defaultDistance, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+		
+		self.defaultSubjectDistance = math.clamp(
+			self.defaultDistance,
+			localPlayer.CameraMinZoomDistance,
+			localPlayer.CameraMaxZoomDistance
+		)
+		
+		self.currentSubjectDistance = math.clamp(
+			self.defaultDistance,
+			localPlayer.CameraMinZoomDistance,
+			localPlayer.CameraMaxZoomDistance
+		)
 		
 		-- VR screen effect
 		self.VRFadeResetTimer = 0
@@ -4243,7 +4454,11 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	end
 	
 	function VRBaseCamera:UpdateDefaultSubjectDistance()
-		self.defaultSubjectDistance = math.clamp(VR_ZOOM, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+		self.defaultSubjectDistance = math.clamp(
+			VR_ZOOM,
+			localPlayer.CameraMinZoomDistance,
+			localPlayer.CameraMaxZoomDistance
+		)
 	end
 	
 	-- Nominal distance, set by dollying in and out with the mouse wheel or equivalent, not measured distance
@@ -4255,7 +4470,12 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	function VRBaseCamera:SetCameraToSubjectDistance(desiredSubjectDistance: number): number
 		local lastSubjectDistance = self.currentSubjectDistance
 		
-		local newSubjectDistance = math.clamp(desiredSubjectDistance, 0, localPlayer.CameraMaxZoomDistance)
+		local newSubjectDistance = math.clamp(
+			desiredSubjectDistance,
+			0,
+			localPlayer.CameraMaxZoomDistance
+		)
+		
 		if newSubjectDistance < 1.0 then
 			self.currentSubjectDistance = 0.5
 			if not self.inFirstPerson then
@@ -4269,7 +4489,10 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 		end
 		
 		-- Pass target distance and zoom direction to the zoom controller
-		ZoomController.SetZoomParameters(self.currentSubjectDistance, math.sign(desiredSubjectDistance - lastSubjectDistance))
+		ZoomController.SetZoomParameters(
+			self.currentSubjectDistance,
+			math.sign(desiredSubjectDistance - lastSubjectDistance)
+		)
 		
 		-- Returned only for convenience to the caller to know the outcome
 		return self.currentSubjectDistance
@@ -4285,8 +4508,11 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 			self.cameraTranslationConstraints.z)
 		
 		local cameraHeightDelta = Vector3.new(0, self:GetCameraHeight(), 0)
-		local newFocus = CFrame.new(Vector3.new(subjectPosition.x, lastFocus.y, subjectPosition.z):
-			Lerp(subjectPosition + cameraHeightDelta, self.cameraTranslationConstraints.y))
+		local newFocus = CFrame.new(Vector3.new(
+				subjectPosition.x,
+				lastFocus.y,
+				subjectPosition.z
+			): Lerp(subjectPosition + cameraHeightDelta, self.cameraTranslationConstraints.y))
 		
 		return newFocus
 	end
@@ -4328,8 +4554,7 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 			return
 		end
 		
-		local blurPart = nil
-		blurPart = (workspace.CurrentCamera :: Camera):FindFirstChild("VRBlurPart")
+		local blurPart = workspace.CurrentCamera:FindFirstChild("VRBlurPart")
 		if not blurPart then
 			local basePartSize = Vector3.new(0.44,0.47,1)
 			blurPart = Instance.new("Part")
@@ -4345,13 +4570,18 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 			
 			RunService.RenderStepped:Connect(function(step)
 				local userHeadCF = VRService:GetUserCFrame(Enum.UserCFrame.Head)
+				local camera = workspace.CurrentCamera
 				
 				if FFlagUserVRApplyHeadScaleToHandPositions then
-					local vrCF = (workspace.CurrentCamera :: Camera).CFrame * (CFrame.new(userHeadCF.p * (workspace.CurrentCamera :: Camera).HeadScale) * (userHeadCF - userHeadCF.p))
-					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0)) + vrCF.LookVector * (1.05 * (workspace.CurrentCamera :: Camera).HeadScale)
-					blurPart.Size = basePartSize * (workspace.CurrentCamera :: Camera).HeadScale
+					local vrCF = camera.CFrame
+						* (CFrame.new(userHeadCF.p * (camera).HeadScale) * (userHeadCF - userHeadCF.p))
+					
+					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0))
+						+ vrCF.LookVector * (1.05 * camera.HeadScale)
+					
+					blurPart.Size = basePartSize * camera.HeadScale
 				else
-					local vrCF = (workspace :: any).Camera.CFrame * userHeadCF
+					local vrCF = camera.CFrame * userHeadCF
 					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0)) + vrCF.LookVector * 1.05
 				end
 			end)
@@ -4365,7 +4595,7 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 		
 		if not VRBlur then
 			if not VRScreen then
-				VRScreen = Instance.new("SurfaceGui") or Instance.new("ScreenGui")
+				VRScreen = Instance.new("SurfaceGui")
 			end
 			
 			VRScreen.Name = "VRBlurScreen"
@@ -4383,8 +4613,8 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 			
 			-- this computes the ratio between the GUI 3D panel and the VR viewport
 			-- adding 15% overshoot for edges on 2 screen headsets
-			local ratioX = (workspace.CurrentCamera :: Camera).ViewportSize.X * 2.3 / VR_PANEL_SIZE
-			local ratioY = (workspace.CurrentCamera :: Camera).ViewportSize.Y * 2.3 / VR_PANEL_SIZE
+			local ratioX = workspace.CurrentCamera.ViewportSize.X * 2.3 / VR_PANEL_SIZE
+			local ratioY = workspace.CurrentCamera.ViewportSize.Y * 2.3 / VR_PANEL_SIZE
 			
 			VRBlur.Size = UDim2.fromScale(ratioX, ratioY)
 			VRBlur.BackgroundTransparency = 1
@@ -4571,7 +4801,9 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		return newCameraCFrame, newCameraFocus
 	end
 	
-	function VRCamera:UpdateFirstPersonTransform(timeDelta, newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
+	function VRCamera:UpdateFirstPersonTransform(timeDelta, newCameraCFrame,
+		newCameraFocus, lastSubjPos, subjectPosition)
+		
 		-- transition from TP to FP
 		if self.needsReset then
 			self:StartFadeFromBlack()
@@ -4611,12 +4843,22 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 			end
 		end
 		
-		local newLookVector = self:CalculateNewLookVectorFromArg(cameraLookVector, Vector2.new(yawDelta, 0))
-		newCameraCFrame = CFrame.new(cameraFocusP - (FP_ZOOM * newLookVector), cameraFocusP)
+		local newLookVector = self:CalculateNewLookVectorFromArg(
+			cameraLookVector,
+			Vector2.new(yawDelta, 0)
+		)
+		
+		newCameraCFrame = CFrame.new(
+			cameraFocusP - (FP_ZOOM * newLookVector),
+			cameraFocusP
+		)
+		
 		return newCameraCFrame, newCameraFocus
 	end
 	
-	function VRCamera:UpdateThirdPersonTransform(timeDelta, newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
+	function VRCamera:UpdateThirdPersonTransform(timeDelta, newCameraCFrame, newCameraFocus,
+		lastSubjPos, subjectPosition)
+		
 		local zoom = self:GetCameraToSubjectDistance()
 		if zoom < 0.5 then
 			zoom = 0.5
@@ -4625,7 +4867,7 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
 			-- compute delta of subject since last update
 			local subjectDelta = lastSubjPos - subjectPosition
-			local moveVector = require(localPlayer:WaitForChild("PlayerScripts").PlayerModule:WaitForChild("ControlModule")):GetMoveVector()
+			local moveVector = ControlModule:GetMoveVector()
 			
 			-- is the subject still moving?
 			local isMoving = subjectDelta.magnitude > 0.01 or moveVector.magnitude > 0.01
@@ -4645,7 +4887,8 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 				-- if the focus subject stopped, time to reset the camera
 				self.VRCameraFocusFrozen = true
 			else
-				local subjectMoved = self.lastCameraResetPosition == nil or (subjectPosition - self.lastCameraResetPosition).Magnitude > 1
+				local subjectMoved = self.lastCameraResetPosition == nil
+					or (subjectPosition - self.lastCameraResetPosition).Magnitude > 1
 				
 				-- compute offset for 3rd person camera rotation
 				local rotateInput = CameraInput.getRotation()
@@ -4654,10 +4897,10 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 				if userCameraPan then
 					if rotateInput.X ~= 0 then
 						local tempRotation = self.cameraOffsetRotation + rotateInput.X;
-						if(tempRotation < -math.pi) then
+						if tempRotation < -math.pi then
 							tempRotation = math.pi - (tempRotation + math.pi) 
 						else
-							if (tempRotation > math.pi) then
+							if tempRotation > math.pi then
 								tempRotation = -math.pi + (tempRotation - math.pi) 
 							end
 						end
@@ -4667,15 +4910,27 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 							
 							-- get player facing direction
 							local humanoid = self:GetHumanoid()
-							local forwardVector = humanoid.Torso and humanoid.Torso.CFrame.lookVector or Vector3.new(1,0,0)
+							local forwardVector = humanoid.Torso
+								and humanoid.Torso.CFrame.lookVector
+								or Vector3.new(1, 0, 0)
+							
 							-- adjust camera height
 							local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
 							local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
+							
 							-- compute new cframe at height level to subject
-							local lookAtPos = Vector3.new(newCameraFocus.Position.X, newCameraPos.Y, newCameraFocus.Position.Z)
+							local lookAtPos = Vector3.new(
+								newCameraFocus.Position.X,
+								newCameraPos.Y,
+								newCameraFocus.Position.Z
+							)
 							
 							local tempCF = CFrame.new(newCameraPos, lookAtPos)
-							tempCF = tempCF * CFrame.fromAxisAngle(Vector3.new(0,1,0), self.cameraOffsetRotationDiscrete)
+							tempCF *= CFrame.fromAxisAngle(
+								Vector3.new(0, 1, 0),
+								self.cameraOffsetRotationDiscrete
+							)
+							
 							newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
 							
 							newCameraCFrame = CFrame.new(newCameraPos, lookAtPos)
@@ -4707,7 +4962,10 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 					
 					-- get player facing direction
 					local humanoid = self:GetHumanoid()
-					local forwardVector = humanoid.Torso and humanoid.Torso.CFrame.lookVector or Vector3.new(1,0,0)
+					local forwardVector = humanoid.Torso
+						and humanoid.Torso.CFrame.lookVector
+						or Vector3.new(1, 0, 0)
+					
 					-- adjust camera height
 					local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
 					local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
@@ -4716,7 +4974,7 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 					
 					if FFlagUserFlagEnableVRUpdate3 and self.cameraOffsetRotation ~= 0 then
 						local tempCF = CFrame.new(newCameraPos, lookAtPos)
-						tempCF = tempCF * CFrame.fromAxisAngle(Vector3.new(0,1,0), self.cameraOffsetRotationDiscrete)
+						tempCF *= CFrame.fromAxisAngle(Vector3.new(0,1,0), self.cameraOffsetRotationDiscrete)
 						newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
 					end
 					
@@ -4826,10 +5084,10 @@ local VehicleCameraCore do
 	-- step a damped angular spring axis
 	local function stepSpringAxis(dt, f, g, p, v)
 		local offset = sanitizeAngle(p - g)
-		local decay = math.exp(-f*dt)
+		local decay = math.exp(-f * dt)
 		
-		local p1 = sanitizeAngle((offset*(1 + f*dt) + v*dt)*decay + g)
-		local v1 = (v*(1 - f*dt) - offset*(f*f*dt))*decay
+		local p1 = sanitizeAngle((offset * (1 + f*dt) + v*dt) * decay + g)
+		local v1 = (v * (1 - f*dt) - offset * (f*f * dt)) * decay
 		
 		return p1, v1
 	end
@@ -4860,8 +5118,8 @@ local VehicleCameraCore do
 			local offset = p0 - g
 			local decay = math.exp(-f*dt)
 			
-			local p1 = (offset*(1 + f*dt) + v0*dt)*decay + g
-			local v1 = (v0*(1 - f*dt) - offset*(f*f*dt))*decay
+			local p1 = (offset * (1 + f*dt) + v0*dt) * decay + g
+			local v1 = (v0 * (1 - f*dt) - offset * (f*f * dt)) * decay
 			
 			self.p = p1
 			self.v = v1
@@ -4892,6 +5150,7 @@ local VehicleCameraCore do
 					VEHICLE_CAMERA_CONFIG.yawResponseDampingFalling,
 					0
 				),
+				
 				fSpringPitch = VariableEdgeSpring.new(
 					VEHICLE_CAMERA_CONFIG.pitchReponseDampingRising,
 					VEHICLE_CAMERA_CONFIG.pitchResponseDampingFalling,
@@ -4937,8 +5196,8 @@ local VehicleCameraCore do
 			)
 			
 			-- calculate final frequencies
-			local fYaw = 2*math.pi*VEHICLE_CAMERA_CONFIG.yawStiffness*fSpringYaw:step(dt)
-			local fPitch = 2*math.pi*VEHICLE_CAMERA_CONFIG.pitchStiffness*fSpringPitch:step(dt)
+			local fYaw = 2 * math.pi * VEHICLE_CAMERA_CONFIG.yawStiffness * fSpringYaw:step(dt)
+			local fPitch = 2 * math.pi * VEHICLE_CAMERA_CONFIG.pitchStiffness * fSpringPitch:step(dt)
 			
 			-- adjust response for first person
 			fPitch *= map(firstPerson, 0, 1, 1, VEHICLE_CAMERA_CONFIG.firstPersonResponseMul)
@@ -5062,7 +5321,11 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 		local dPitch = -rotationInput.Y
 		
 		yawSpring.pos = sanitizeAngle(yawSpring.pos + dYaw)
-		pitchSpring.pos = sanitizeAngle(math.clamp(pitchSpring.pos + dPitch, -PITCH_LIMIT, PITCH_LIMIT))
+		pitchSpring.pos = sanitizeAngle(math.clamp(
+			pitchSpring.pos + dPitch,
+			-PITCH_LIMIT,
+			PITCH_LIMIT
+		))
 		
 		if CameraInput.getRotationActivated() then
 			self.lastPanTick = os.clock()
@@ -5117,7 +5380,11 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	end
 	
 	function VehicleCamera:_GetThirdPersonLocalOffset()
-		return self.assemblyOffset + Vector3.new(0, self.assemblyRadius*VEHICLE_CAMERA_CONFIG.verticalCenterOffset, 0)
+		return self.assemblyOffset + Vector3.new(
+			0,
+			self.assemblyRadius * VEHICLE_CAMERA_CONFIG.verticalCenterOffset,
+			0
+		)
 	end
 	
 	function VehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
@@ -5174,7 +5441,7 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 		
 		-- calculate final focus & cframe
 		local focus = CFrame.new(subjectCFrame*localOffset)*processedRotation*objectRotation
-		local cf = focus*CFrame.new(0, 0, zoom)
+		local cf = focus * CFrame.new(0, 0, zoom)
 		
 		return cf, focus
 	end
@@ -5273,7 +5540,11 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	end
 	
 	function VRVehicleCamera:_GetThirdPersonLocalOffset()
-		return self.assemblyOffset + Vector3.new(0, self.assemblyRadius*VEHICLE_CAMERA_CONFIG.verticalCenterOffset, 0)
+		return self.assemblyOffset + Vector3.new(
+			0,
+			self.assemblyRadius*VEHICLE_CAMERA_CONFIG.verticalCenterOffset,
+			0
+		)
 	end
 	
 	function VRVehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
@@ -5348,7 +5619,11 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 			local curCameraDist = curCameraDir.magnitude
 			curCameraDir = curCameraDir.Unit
 			local cameraDot = curCameraDir:Dot(camera.CFrame.LookVector)
-			if cameraDot > TP_FOLLOW_ANGLE_DOT and curCameraDist < TP_FOLLOW_DIST and not self.needsReset then -- vehicle in view
+			
+			if cameraDot > TP_FOLLOW_ANGLE_DOT
+			and curCameraDist < TP_FOLLOW_DIST
+			and not self.needsReset then -- vehicle in view
+
 				-- keep old focus
 				focus = self.lastCameraFocus
 				
@@ -5356,7 +5631,12 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 				local cameraFocusP = focus.p
 				local cameraLookVector = self:GetCameraLookVector()
 				cameraLookVector = Vector3.new(cameraLookVector.X, 0, cameraLookVector.Z).Unit
-				local newLookVector = self:CalculateNewLookVectorFromArg(cameraLookVector, Vector2.new(0, 0))
+				
+				local newLookVector = self:CalculateNewLookVectorFromArg(
+					cameraLookVector,
+					Vector2.new(0, 0)
+				)
+				
 				cf = CFrame.new(cameraFocusP - (zoom * newLookVector), cameraFocusP)
 			else
 				-- new focus / teleport
@@ -5370,7 +5650,12 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 			self:UpdateEdgeBlur(localPlayer, dt)
 		else
 			-- first person in vehicle : lock orientation for stable camera
-			local dir = Vector3.new(processedRotation.LookVector.X, 0, processedRotation.LookVector.Z).Unit
+			local dir = Vector3.new(
+				processedRotation.LookVector.X,
+				0,
+				processedRotation.LookVector.Z
+			).Unit
+			
 			local planarRotation = CFrame.new(processedRotation.Position, dir)
 			
 			-- this removes the pitch to reduce motion sickness
@@ -5506,7 +5791,8 @@ local CameraModule = {} do
 		self:ActivateCameraController(self:GetCameraControlChoice())
 		self:ActivateOcclusionModule(localPlayer.DevCameraOcclusionMode)
 		self:OnCurrentCameraChanged() -- Does initializations and makes first camera controller
-		RunService:BindToRenderStep("cameraRenderUpdate", Enum.RenderPriority.Camera.Value, function(dt) self:Update(dt) end)
+		RunService:BindToRenderStep("cameraRenderUpdate", Enum.RenderPriority.Camera.Value,
+			function(dt) self:Update(dt) end)
 
 		-- Connect listeners to camera-related properties
 		for _, propertyName in pairs(PLAYER_CAMERA_PROPERTIES) do
@@ -5595,7 +5881,8 @@ local CameraModule = {} do
 			local newModuleOcclusionMode = self.activeOcclusionModule:GetOcclusionMode()
 			-- Sanity check that the module we selected or instantiated actually supports the desired occlusionMode
 			if newModuleOcclusionMode ~= occlusionMode then
-				warn("CameraScript ActivateOcclusionModule mismatch: ",self.activeOcclusionModule:GetOcclusionMode(),"~=",occlusionMode)
+				warn("CameraScript ActivateOcclusionModule mismatch: ",
+					self.activeOcclusionModule:GetOcclusionMode(), "~=", occlusionMode)
 			end
 
 			-- Deactivate current module if there is one
@@ -5623,7 +5910,7 @@ local CameraModule = {} do
 						self.activeOcclusionModule:CharacterAdded(player.Character, player)
 					end
 				end
-				self.activeOcclusionModule:OnCameraSubjectChanged((workspace.CurrentCamera :: Camera).CameraSubject)
+				self.activeOcclusionModule:OnCameraSubjectChanged(workspace.CurrentCamera.CameraSubject)
 			end
 
 			-- Activate new choice
@@ -5640,11 +5927,18 @@ local CameraModule = {} do
 		local cameraType = camera.CameraType
 		local cameraSubject = camera.CameraSubject
 
-		local isEligibleType = cameraType == Enum.CameraType.Custom or cameraType == Enum.CameraType.Follow
-		local isEligibleSubject = cameraSubject and cameraSubject:IsA("VehicleSeat") or false
+		local isEligibleType = cameraType == Enum.CameraType.Custom
+			or cameraType == Enum.CameraType.Follow
+		
+		local isEligibleSubject = cameraSubject
+			and cameraSubject:IsA("VehicleSeat")
+			or false
+		
 		local isEligibleOcclusionMode = self.occlusionMode ~= Enum.DevCameraOcclusionMode.Invisicam
 
-		return isEligibleSubject and isEligibleType and isEligibleOcclusionMode
+		return isEligibleSubject
+			and isEligibleType
+			and isEligibleOcclusionMode
 	end
 
 	-- When supplied, legacyCameraType is used and cameraMovementMode is ignored (should be nil anyways)
@@ -5652,7 +5946,8 @@ local CameraModule = {} do
 	function CameraModule:ActivateCameraController(cameraMovementMode, legacyCameraType: Enum.CameraType?)
 		local newCameraCreator = nil
 
-		if legacyCameraType~=nil then
+		if legacyCameraType ~= nil then
+			
 			--[[
 				This function has been passed a CameraType enum value. Some of these map to the use of
 				the LegacyCamera module, the value "Custom" will be translated to a movementMode enum
@@ -5681,9 +5976,9 @@ local CameraModule = {} do
 			elseif legacyCameraType == Enum.CameraType.Orbital then
 				cameraMovementMode = Enum.ComputerCameraMovementMode.Orbital
 
-			elseif legacyCameraType == Enum.CameraType.Attach or
-				   legacyCameraType == Enum.CameraType.Watch or
-				   legacyCameraType == Enum.CameraType.Fixed then
+			elseif legacyCameraType == Enum.CameraType.Attach
+				or legacyCameraType == Enum.CameraType.Watch
+				or legacyCameraType == Enum.CameraType.Fixed then
 				newCameraCreator = LegacyCamera
 			else
 				warn("CameraScript encountered an unhandled Camera.CameraType value: ",legacyCameraType)
@@ -5693,10 +5988,10 @@ local CameraModule = {} do
 		if not newCameraCreator then
 			if VRService.VREnabled then
 				newCameraCreator = VRCamera
-			elseif cameraMovementMode == Enum.ComputerCameraMovementMode.Classic or
-				cameraMovementMode == Enum.ComputerCameraMovementMode.Follow or
-				cameraMovementMode == Enum.ComputerCameraMovementMode.Default or
-				cameraMovementMode == Enum.ComputerCameraMovementMode.CameraToggle then
+			elseif cameraMovementMode == Enum.ComputerCameraMovementMode.Classic
+				or cameraMovementMode == Enum.ComputerCameraMovementMode.Follow
+				or cameraMovementMode == Enum.ComputerCameraMovementMode.Default
+				or cameraMovementMode == Enum.ComputerCameraMovementMode.CameraToggle then
 				newCameraCreator = ClassicCamera
 			elseif cameraMovementMode == Enum.ComputerCameraMovementMode.Orbital then
 				newCameraCreator = OrbitalCamera
@@ -5891,7 +6186,8 @@ local CameraModule = {} do
 	-- Formerly getCurrentCameraMode, this function resolves developer and user camera control settings to
 	-- decide which camera control module should be instantiated. The old method of converting redundant enum types
 	function CameraModule:GetCameraControlChoice()
-		if UserInputService:GetLastInputType() == Enum.UserInputType.Touch or UserInputService.TouchEnabled then
+		if UserInputService:GetLastInputType() == Enum.UserInputType.Touch
+			or UserInputService.TouchEnabled then
 			-- Touch
 			if localPlayer.DevTouchCameraMode == Enum.DevTouchCameraMovementMode.UserChoice then
 				return CameraUtils.ConvertCameraModeEnumToStandard( UserGameSettings.TouchCameraMovementMode )
@@ -5901,7 +6197,8 @@ local CameraModule = {} do
 		else
 			-- Computer
 			if localPlayer.DevComputerCameraMode == Enum.DevComputerCameraMovementMode.UserChoice then
-				local computerMovementMode = CameraUtils.ConvertCameraModeEnumToStandard(UserGameSettings.ComputerCameraMovementMode)
+				local computerMovementMode = CameraUtils.ConvertCameraModeEnumToStandard(
+					UserGameSettings.ComputerCameraMovementMode)
 				return CameraUtils.ConvertCameraModeEnumToStandard(computerMovementMode)
 			else
 				return CameraUtils.ConvertCameraModeEnumToStandard(localPlayer.DevComputerCameraMode)
@@ -6244,63 +6541,121 @@ local ClickToMoveDisplay = {} do
 		
 		function FailureWaypoint:NewDisplayModel(position)
 			local newDisplayModel: Part = FailureWaypointTemplate:Clone()
+			
 			placePathWaypoint(newDisplayModel, position)
-			local ray = Ray.new(position + Vector3.new(0, 2.5, 0), Vector3.new(0, -10, 0))
+			
+			local ray = Ray.new(
+				position + Vector3.new(0, 2.5, 0),
+				Vector3.new(0, -10, 0)
+			)
+			
 			local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(
 				ray, { workspace.CurrentCamera, localPlayer.Character }
 			)
+			
 			if hitPart then
 				newDisplayModel.CFrame = CFrame.new(hitPoint, hitPoint + hitNormal)
 				newDisplayModel.Parent = getTrailDotParent()
 			end
+			
 			return newDisplayModel
 		end
 		
 		function FailureWaypoint:RunFailureTween()
 			wait(FAILURE_TWEEN_LENGTH) -- Delay one tween length betfore starting tweening
 			-- Tween out from center
-			local tweenInfo = TweenInfo.new(FAILURE_TWEEN_LENGTH/2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-			local tweenLeft = TweenService:Create(self.DisplayModel.FailureWaypointBillboard, tweenInfo,
-				{ SizeOffset = FAIL_WAYPOINT_SIZE_OFFSET_LEFT })
+			
+			local tweenInfo = TweenInfo.new(
+				FAILURE_TWEEN_LENGTH / 2,
+				Enum.EasingStyle.Sine,
+				Enum.EasingDirection.Out
+			)
+			
+			local tweenLeft = TweenService:Create(
+				self.DisplayModel.FailureWaypointBillboard,
+				tweenInfo,
+				{ SizeOffset = FAIL_WAYPOINT_SIZE_OFFSET_LEFT }
+			)
 			tweenLeft:Play()
 			
-			local tweenLeftRoation = TweenService:Create(self.DisplayModel.FailureWaypointBillboard.Frame, tweenInfo,
-				{ Rotation = 10 })
+			local tweenLeftRoation = TweenService:Create(
+				self.DisplayModel.FailureWaypointBillboard.Frame,
+				tweenInfo,
+				{ Rotation = 10 }
+			)
+			
 			tweenLeftRoation:Play()
 			
-			tweenLeft.Completed:wait()
+			tweenLeft.Completed:Wait()
 			
 			-- Tween back and forth
-			tweenInfo = TweenInfo.new(FAILURE_TWEEN_LENGTH, Enum.EasingStyle.Sine, Enum.EasingDirection.Out,
-				FAILURE_TWEEN_COUNT - 1, true)
-			local tweenSideToSide = TweenService:Create(self.DisplayModel.FailureWaypointBillboard, tweenInfo,
-				{ SizeOffset = FAIL_WAYPOINT_SIZE_OFFSET_RIGHT})
+			tweenInfo = TweenInfo.new(
+				FAILURE_TWEEN_LENGTH,
+				Enum.EasingStyle.Sine,
+				Enum.EasingDirection.Out,
+				FAILURE_TWEEN_COUNT - 1,
+				true
+			)
+			
+			local tweenSideToSide = TweenService:Create(
+				self.DisplayModel.FailureWaypointBillboard,
+				tweenInfo,
+				{ SizeOffset = FAIL_WAYPOINT_SIZE_OFFSET_RIGHT}
+			)
+			
 			tweenSideToSide:Play()
 			
 			-- Tween flash dark and roate left and right
-			tweenInfo = TweenInfo.new(FAILURE_TWEEN_LENGTH, Enum.EasingStyle.Sine, Enum.EasingDirection.Out,
-				FAILURE_TWEEN_COUNT - 1, true)
-			local tweenFlash = TweenService:Create(self.DisplayModel.FailureWaypointBillboard.Frame.ImageLabel, tweenInfo,
-				{ ImageColor3 = Color3.new(0.75, 0.75, 0.75)})
+			tweenInfo = TweenInfo.new(
+				FAILURE_TWEEN_LENGTH,
+				Enum.EasingStyle.Sine,
+				Enum.EasingDirection.Out,
+				FAILURE_TWEEN_COUNT - 1,
+				true
+			)
+			
+			local tweenFlash = TweenService:Create(
+				self.DisplayModel.FailureWaypointBillboard.Frame.ImageLabel,
+				tweenInfo,
+				{ ImageColor3 = Color3.new(0.75, 0.75, 0.75)}
+			)
+			
 			tweenFlash:Play()
 			
-			local tweenRotate = TweenService:Create(self.DisplayModel.FailureWaypointBillboard.Frame, tweenInfo,
-				{ Rotation = -10 })
+			local tweenRotate = TweenService:Create(
+				self.DisplayModel.FailureWaypointBillboard.Frame,
+				tweenInfo,
+				{ Rotation = -10 }
+			)
+			
 			tweenRotate:Play()
 			
-			tweenSideToSide.Completed:wait()
+			tweenSideToSide.Completed:Wait()
 			
 			-- Tween back to center
-			tweenInfo = TweenInfo.new(FAILURE_TWEEN_LENGTH/2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-			local tweenCenter = TweenService:Create(self.DisplayModel.FailureWaypointBillboard, tweenInfo,
-				{ SizeOffset = FAIL_WAYPOINT_SIZE_OFFSET_CENTER })
+			tweenInfo = TweenInfo.new(
+				FAILURE_TWEEN_LENGTH / 2,
+				Enum.EasingStyle.Sine,
+				Enum.EasingDirection.Out
+			)
+			
+			local tweenCenter = TweenService:Create(
+				self.DisplayModel.FailureWaypointBillboard,
+				tweenInfo,
+				{ SizeOffset = FAIL_WAYPOINT_SIZE_OFFSET_CENTER }
+			)
+			
 			tweenCenter:Play()
 			
-			local tweenRoation = TweenService:Create(self.DisplayModel.FailureWaypointBillboard.Frame, tweenInfo,
-				{ Rotation = 0 })
+			local tweenRoation = TweenService:Create(
+				self.DisplayModel.FailureWaypointBillboard.Frame,
+				tweenInfo,
+				{ Rotation = 0 }
+			)
+			
 			tweenRoation:Play()
 			
-			tweenCenter.Completed:wait()
+			tweenCenter.Completed:Wait()
 			
 			wait(FAILURE_TWEEN_LENGTH) -- Delay one tween length betfore removing
 		end
@@ -6351,22 +6706,30 @@ local ClickToMoveDisplay = {} do
 		count = 1
 		for i = #newTrailDots, 1, -1 do
 			reversedTrailDots[count] = newTrailDots[i]
-			count = count + 1
+			count += 1
 		end
 		return reversedTrailDots
 	end
 	
 	local function getTrailDotScale(distanceToCamera: number, defaultSize: Vector2)
 		local rangeLength = TRAIL_DOT_MAX_DISTANCE - TRAIL_DOT_MIN_DISTANCE
-		local inRangePoint = math.clamp(distanceToCamera - TRAIL_DOT_MIN_DISTANCE, 0, rangeLength)/rangeLength
-		local scale = TRAIL_DOT_MIN_SCALE + (TRAIL_DOT_MAX_SCALE - TRAIL_DOT_MIN_SCALE)*inRangePoint
+		
+		local inRangePoint = math.clamp(
+			distanceToCamera - TRAIL_DOT_MIN_DISTANCE,
+			0,
+			rangeLength
+		) / rangeLength
+		
+		local scale = TRAIL_DOT_MIN_SCALE
+			+ (TRAIL_DOT_MAX_SCALE - TRAIL_DOT_MIN_SCALE) * inRangePoint
+		
 		return defaultSize * scale
 	end
 	
 	local createPathCount = 0
 	-- originalEndWaypoint is optional, causes the waypoint to tween from that position.
 	function ClickToMoveDisplay.CreatePathDisplay(wayPoints, originalEndWaypoint)
-		createPathCount = createPathCount + 1
+		createPathCount += 1
 		local trailDots = createTrailDots(wayPoints, originalEndWaypoint)
 		
 		local function removePathBeforePoint(wayPointNumber)
@@ -6382,7 +6745,8 @@ local ClickToMoveDisplay = {} do
 			end
 		end
 		
-		local reiszeTrailDotsUpdateName = "ClickToMoveResizeTrail" ..createPathCount
+		local reiszeTrailDotsUpdateName = "ClickToMoveResizeTrail" .. createPathCount
+		
 		local function resizeTrailDots()
 			if #trailDots == 0 then
 				RunService:UnbindFromRenderStep(reiszeTrailDotsUpdateName)
@@ -6397,6 +6761,7 @@ local ClickToMoveDisplay = {} do
 				end
 			end
 		end
+		
 		RunService:BindToRenderStep(reiszeTrailDotsUpdateName, Enum.RenderPriority.Camera.Value - 1, resizeTrailDots)
 		
 		local function removePath()
@@ -6411,8 +6776,10 @@ local ClickToMoveDisplay = {} do
 		if lastFailureWaypoint then
 			lastFailureWaypoint:Hide()
 		end
+		
 		local failureWaypoint = FailureWaypoint.new(position)
 		lastFailureWaypoint = failureWaypoint
+		
 		coroutine.wrap(function()
 			failureWaypoint:RunFailureTween()
 			failureWaypoint:Destroy()
@@ -6541,7 +6908,11 @@ local Keyboard = setmetatable({}, BaseCharacterController) do
 		if inputState == Enum.UserInputState.Cancel then
 			self.moveVector = Vector3.zero
 		else
-			self.moveVector = Vector3.new(self.leftValue + self.rightValue, 0, self.forwardValue + self.backwardValue)
+			self.moveVector = Vector3.new(
+				self.leftValue + self.rightValue,
+				0,
+				self.forwardValue + self.backwardValue
+			)
 		end
 	end
 	
@@ -6969,8 +7340,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 						self.pathResult:ComputeAsync(self.OriginPoint, self.TargetPoint)
 						self.pointList = self.pathResult:GetWaypoints()
 						self.BlockedConn = self.pathResult.Blocked:Connect(
-							function(blockedIdx) self:OnPathBlocked(blockedIdx) end
-						)
+							function(blockedIdx) self:OnPathBlocked(blockedIdx) end)
 						self.PathComputed = self.pathResult.Status == Enum.PathStatus.Success
 					end
 				end
@@ -7604,11 +7974,11 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		
 		local function OnCharacterChildAdded(child)
 			if UserInputService.TouchEnabled then
-				if child:IsA('Tool') then
+				if child:IsA("Tool") then
 					child.ManualActivationOnly = true
 				end
 			end
-			if child:IsA('Humanoid') then
+			if child:IsA("Humanoid") then
 				DisconnectEvent(self.humanoidDiedConn)
 				self.humanoidDiedConn = child.Died:Connect(function()
 					if patherHandler.ExistingIndicator then
@@ -7623,7 +7993,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		end)
 		self.characterChildRemovedConn = character.ChildRemoved:Connect(function(child)
 			if UserInputService.TouchEnabled then
-				if child:IsA('Tool') then
+				if child:IsA("Tool") then
 					child.ManualActivationOnly = false
 				end
 			end
@@ -7669,7 +8039,7 @@ local ClickToMove = setmetatable({}, Keyboard) do
 					local character = localPlayer.Character
 					if character then
 						for _, child in pairs(character:GetChildren()) do
-							if child:IsA('Tool') then
+							if child:IsA("Tool") then
 								child.ManualActivationOnly = false
 							end
 						end
@@ -7871,7 +8241,7 @@ end
 
 local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	DynamicThumbstick.__index = DynamicThumbstick
-	--[[ Constants ]]--
+	
 	local TOUCH_CONTROLS_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
 	
 	local DYNAMIC_THUMBSTICK_ACTION_NAME = "DynamicThumbstickAction"
@@ -7886,6 +8256,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		1 - 0.30,
 		1 - 0.25
 	}
+	
 	local NUM_MIDDLE_IMAGES = #MIDDLE_TRANSPARENCIES
 	
 	local FADE_IN_OUT_BACKGROUND = true
@@ -7985,25 +8356,49 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		end
 		
 		if visible then
-			self.startImageFadeTween = TweenService:Create(self.startImage, ThumbstickFadeTweenInfo, { ImageTransparency = 0 })
+			self.startImageFadeTween = TweenService:Create(
+				self.startImage,
+				ThumbstickFadeTweenInfo,
+				{ ImageTransparency = 0 }
+			)
 			self.startImageFadeTween:Play()
 			
-			self.endImageFadeTween = TweenService:Create(self.endImage, ThumbstickFadeTweenInfo, { ImageTransparency = 0.2 })
+			self.endImageFadeTween = TweenService:Create(
+				self.endImage,
+				ThumbstickFadeTweenInfo,
+				{ ImageTransparency = 0.2 }
+			)
 			self.endImageFadeTween:Play()
 			
 			for i = 1, #self.middleImages do
-				self.middleImageFadeTweens[i] = TweenService:Create(self.middleImages[i], ThumbstickFadeTweenInfo, { ImageTransparency = MIDDLE_TRANSPARENCIES[i] })
+				self.middleImageFadeTweens[i] = TweenService:Create(
+					self.middleImages[i],
+					ThumbstickFadeTweenInfo,
+					{ ImageTransparency = MIDDLE_TRANSPARENCIES[i] }
+				)
 				self.middleImageFadeTweens[i]:Play()
 			end
 		else
-			self.startImageFadeTween = TweenService:Create(self.startImage, ThumbstickFadeTweenInfo, { ImageTransparency = 1 })
+			self.startImageFadeTween = TweenService:Create(
+				self.startImage,
+				ThumbstickFadeTweenInfo, 
+				{ ImageTransparency = 1 }
+			)
 			self.startImageFadeTween:Play()
 			
-			self.endImageFadeTween = TweenService:Create(self.endImage, ThumbstickFadeTweenInfo, { ImageTransparency = 1 })
+			self.endImageFadeTween = TweenService:Create(
+				self.endImage,
+				ThumbstickFadeTweenInfo,
+				{ ImageTransparency = 1 }
+			)
 			self.endImageFadeTween:Play()
 			
 			for i = 1, #self.middleImages do
-				self.middleImageFadeTweens[i] = TweenService:Create(self.middleImages[i], ThumbstickFadeTweenInfo, { ImageTransparency = 1 })
+				self.middleImageFadeTweens[i] = TweenService:Create(
+					self.middleImages[i],
+					ThumbstickFadeTweenInfo,
+					{ ImageTransparency = 1 }
+				)
 				self.middleImageFadeTweens[i]:Play()
 			end
 		end
@@ -8124,7 +8519,10 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 				TweenService:Create(
 					self.endImage,
 					tweenInfo,
-					{Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize), ImageColor3 = Color3.new(0,0,0)}
+					{
+						Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize),
+						ImageColor3 = Color3.new(0,0,0)
+					}
 				):Play()
 			end
 			
@@ -8223,12 +8621,12 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		local screenSize = parentFrame.AbsoluteSize
 		local isBigScreen = math.min(screenSize.X, screenSize.Y) > 500
 		if isBigScreen then
-			self.thumbstickSize = self.thumbstickSize * 2
-			self.thumbstickRingSize = self.thumbstickRingSize * 2
-			self.middleSize = self.middleSize * 2
-			self.middleSpacing = self.middleSpacing * 2
-			self.radiusOfDeadZone = self.radiusOfDeadZone * 2
-			self.radiusOfMaxSpeed = self.radiusOfMaxSpeed * 2
+			self.thumbstickSize *= 2
+			self.thumbstickRingSize *= 2
+			self.middleSize *= 2
+			self.middleSpacing *= 2
+			self.radiusOfDeadZone *= 2
+			self.radiusOfMaxSpeed *= 2
 		end
 		
 		local function layoutThumbstickFrame(portraitMode)
@@ -8322,16 +8720,26 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		self.onRenderSteppedConn = RunService.RenderStepped:Connect(function()
 			if self.tweenInAlphaStart ~= nil then
 				local delta = tick() - self.tweenInAlphaStart
+				
 				local fadeInTime = (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA*math.min(delta/fadeInTime, 1)
+				
+				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+					* math.min(delta / fadeInTime, 1)
+				
 				if delta > fadeInTime then
 					self.tweenOutAlphaStart = tick()
 					self.tweenInAlphaStart = nil
 				end
+				
 			elseif self.tweenOutAlphaStart ~= nil then
 				local delta = tick() - self.tweenOutAlphaStart
-				local fadeOutTime = (self.fadeInAndOutHalfDuration * 2) - (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA + FADE_IN_OUT_MAX_ALPHA*math.min(delta/fadeOutTime, 1)
+				
+				local fadeOutTime = (self.fadeInAndOutHalfDuration * 2)
+				- (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
+				
+				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+					+ FADE_IN_OUT_MAX_ALPHA * math.min(delta / fadeOutTime, 1)
+				
 				if delta > fadeOutTime  then
 					self.tweenOutAlphaStart = nil
 				end
@@ -8357,8 +8765,9 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		end
 		
 		local playerGuiChangedConn = nil
-		local originalScreenOrientationWasLandscape =	playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft or
-			playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight
+		local originalScreenOrientationWasLandscape =
+			playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft
+			or playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight
 		
 		local function longShowBackground()
 			self.fadeInAndOutHalfDuration = 2.5
@@ -8367,8 +8776,10 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		end
 		
 		playerGuiChangedConn = playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(function()
-			if (originalScreenOrientationWasLandscape and playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait) or
-				(not originalScreenOrientationWasLandscape and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
+			if (originalScreenOrientationWasLandscape
+				and playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait)
+				or (not originalScreenOrientationWasLandscape
+					and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
 				
 				playerGuiChangedConn:disconnect()
 				longShowBackground()
@@ -8497,13 +8908,15 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 			if self.activeGamepad ~= inputObject.UserInputType then
 				return Enum.ContextActionResult.Pass
 			end
+			
 			if inputObject.KeyCode ~= Enum.KeyCode.Thumbstick1 then return end
 			
 			if inputObject.Position.magnitude > thumbstickDeadzone then
-				self.moveVector  =  Vector3.new(inputObject.Position.X, 0, -inputObject.Position.Y)
+				self.moveVector = Vector3.new(inputObject.Position.X, 0, -inputObject.Position.Y)
 			else
 				self.moveVector = Vector3.zero
 			end
+			
 			return Enum.ContextActionResult.Sink
 		end
 		
@@ -8656,7 +9069,12 @@ local PathDisplay = {} do
 		end
 		
 		local rayDown = Ray.new(point + Vector3.new(0, 2, 0), Vector3.new(0, -8, 0))
-		local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(rayDown, { (localPlayer :: Player).Character :: Model, workspace.CurrentCamera :: Camera })
+		
+		local hitPart, hitPoint, hitNormal = workspace:FindPartOnRayWithIgnoreList(
+			rayDown,
+			{ localPlayer.Character, workspace.CurrentCamera }
+		)
+		
 		if not hitPart then
 			return nil
 		end
@@ -8670,7 +9088,7 @@ local PathDisplay = {} do
 	end
 	
 	function PathDisplay.setCurrentPoints(points)
-		if typeof(points) == 'table' then
+		if typeof(points) == "table" then
 			currentPoints = points
 		else
 			currentPoints = {}
@@ -8682,6 +9100,7 @@ local PathDisplay = {} do
 			oldPoint.Parent = nil
 			returnToPool(oldPoint)
 		end
+		
 		renderedPoints = {}
 		pointModel.Parent = nil
 	end
@@ -8721,7 +9140,7 @@ local PathDisplay = {} do
 					local point = renderPoint(pointPos, false)
 					
 					if point then
-						renderedPoints[#renderedPoints + 1] = point
+						table.insert(renderedPoints, point)
 					end
 					
 					distanceBudget = distanceBudget + PathDisplay.spacing
@@ -8889,8 +9308,9 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 		self.jumpButton.ImageRectSize = Vector2.new(144, 144)
 		self.jumpButton.Size = UDim2.new(0, jumpButtonSize, 0, jumpButtonSize)
 		
-		self.jumpButton.Position = isSmallScreen and UDim2.new(1, -(jumpButtonSize*1.5-10), 1, -jumpButtonSize - 20) or
-			UDim2.new(1, -(jumpButtonSize*1.5-10), 1, -jumpButtonSize * 1.75)
+		self.jumpButton.Position = isSmallScreen
+			and UDim2.new(1, -(jumpButtonSize * 1.5 - 10), 1, -jumpButtonSize - 20)
+			or UDim2.new(1, -(jumpButtonSize * 1.5 - 10), 1, -jumpButtonSize * 1.75)
 		
 		local touchObject: InputObject? = nil
 		self.jumpButton.InputBegan:connect(function(inputObject)
@@ -8937,7 +9357,6 @@ end
 local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 	TouchThumbstick.__index = TouchThumbstick
 	
-	--[[ Constants ]]--
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
 	
 	function TouchThumbstick.new()
@@ -8955,10 +9374,16 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 		
 		return self
 	end
+	
 	function TouchThumbstick:Enable(enable: boolean?, uiParentFrame)
-		if enable == nil then return false end			-- If nil, return false (invalid argument)
-		enable = enable and true or false				-- Force anything non-nil to boolean before comparison
-		if self.enabled == enable then return true end	-- If no state change, return true indicating already in requested state
+		-- If nil, return false (invalid argument)
+		if enable == nil then return false end
+		
+		-- Force anything non-nil to boolean before comparison
+		enable = enable and true or false
+		
+		-- If no state change, return true indicating already in requested state
+		if self.enabled == enable then return true end
 		
 		self.moveVector = Vector3.zero
 		self.isJumping = false
@@ -8976,15 +9401,22 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 		end
 		self.enabled = enable
 	end
+	
 	function TouchThumbstick:OnInputEnded()
 		self.thumbstickFrame.Position = self.screenPos
-		self.stickImage.Position = UDim2.new(0, self.thumbstickFrame.Size.X.Offset/2 - self.thumbstickSize/4, 0, self.thumbstickFrame.Size.Y.Offset/2 - self.thumbstickSize/4)
+		self.stickImage.Position = UDim2.new(
+			0,
+			self.thumbstickFrame.Size.X.Offset / 2 - self.thumbstickSize / 4,
+			0,
+			self.thumbstickFrame.Size.Y.Offset / 2 - self.thumbstickSize / 4
+		)
 		
 		self.moveVector = Vector3.zero
 		self.isJumping = false
 		self.thumbstickFrame.Position = self.screenPos
 		self.moveTouchObject = nil
 	end
+	
 	function TouchThumbstick:Create(parentFrame)
 		
 		if self.thumbstickFrame then
@@ -9003,8 +9435,9 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 		local minAxis = math.min(parentFrame.AbsoluteSize.X, parentFrame.AbsoluteSize.Y)
 		local isSmallScreen = minAxis <= 500
 		self.thumbstickSize = isSmallScreen and 70 or 120
-		self.screenPos = isSmallScreen and UDim2.new(0, (self.thumbstickSize/2) - 10, 1, -self.thumbstickSize - 20) or
-			UDim2.new(0, self.thumbstickSize/2, 1, -self.thumbstickSize * 1.75)
+		self.screenPos = isSmallScreen
+			and UDim2.new(0, (self.thumbstickSize / 2) - 10, 1, -self.thumbstickSize - 20)
+			or UDim2.new(0, self.thumbstickSize / 2, 1, -self.thumbstickSize * 1.75)
 		
 		self.thumbstickFrame = Instance.new("Frame")
 		self.thumbstickFrame.Name = "ThumbstickFrame"
@@ -9030,8 +9463,13 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 		self.stickImage.ImageRectOffset = Vector2.new(220, 0)
 		self.stickImage.ImageRectSize = Vector2.new(111, 111)
 		self.stickImage.BackgroundTransparency = 1
-		self.stickImage.Size = UDim2.new(0, self.thumbstickSize/2, 0, self.thumbstickSize/2)
-		self.stickImage.Position = UDim2.new(0, self.thumbstickSize/2 - self.thumbstickSize/4, 0, self.thumbstickSize/2 - self.thumbstickSize/4)
+		self.stickImage.Size = UDim2.new(0, self.thumbstickSize / 2, 0, self.thumbstickSize / 2)
+		self.stickImage.Position = UDim2.new(
+			0,
+			self.thumbstickSize / 2 - self.thumbstickSize / 4,
+			0,
+			self.thumbstickSize / 2 - self.thumbstickSize / 4
+		)
 		self.stickImage.ZIndex = 2
 		self.stickImage.Parent = self.thumbstickFrame
 		
@@ -9045,7 +9483,7 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 			-- Scaled Radial Dead Zone
 			local inputAxisMagnitude = currentMoveVector.magnitude
 			if inputAxisMagnitude < deadZone then
-				currentMoveVector = Vector3.new()
+				currentMoveVector = Vector3.zero
 			else
 				currentMoveVector = currentMoveVector.unit * ((inputAxisMagnitude - deadZone) / (1 - deadZone))
 				-- NOTE: Making currentMoveVector a unit vector will cause the player to instantly go max speed
@@ -9069,7 +9507,12 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 				length = math.min(length, maxLength)
 				relativePosition = relativePosition.unit * length
 			end
-			self.stickImage.Position = UDim2.new(0, relativePosition.X + self.stickImage.AbsoluteSize.X/2, 0, relativePosition.Y + self.stickImage.AbsoluteSize.Y/2)
+			self.stickImage.Position = UDim2.new(
+				0,
+				relativePosition.X + self.stickImage.AbsoluteSize.X / 2,
+				0,
+				relativePosition.Y + self.stickImage.AbsoluteSize.Y / 2
+			)
 		end
 		
 		-- input connections
@@ -9082,21 +9525,40 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 			end
 			
 			self.moveTouchObject = inputObject
-			self.thumbstickFrame.Position = UDim2.new(0, inputObject.Position.X - self.thumbstickFrame.Size.X.Offset/2, 0, inputObject.Position.Y - self.thumbstickFrame.Size.Y.Offset/2)
-			centerPosition = Vector2.new(self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X/2,
-				self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y/2)
-			local direction = Vector2.new(inputObject.Position.X - centerPosition.X, inputObject.Position.Y - centerPosition.Y)
+			self.thumbstickFrame.Position = UDim2.new(
+				0,
+				inputObject.Position.X - self.thumbstickFrame.Size.X.Offset / 2,
+				0,
+				inputObject.Position.Y - self.thumbstickFrame.Size.Y.Offset / 2
+			)
+			
+			centerPosition = Vector2.new(
+				self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
+				self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
+			)
+			
+			local direction = Vector2.new(
+				inputObject.Position.X - centerPosition.X,
+				inputObject.Position.Y - centerPosition.Y
+			)
 		end)
 		
-		self.onTouchMovedConn = UserInputService.TouchMoved:Connect(function(inputObject: InputObject, isProcessed: boolean)
-			if inputObject == self.moveTouchObject then
-				centerPosition = Vector2.new(self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X/2,
-					self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y/2)
-				local direction = Vector2.new(inputObject.Position.X - centerPosition.X, inputObject.Position.Y - centerPosition.Y)
-				DoMove(direction)
-				MoveStick(inputObject.Position)
+		self.onTouchMovedConn = UserInputService.TouchMoved:Connect(
+			function(inputObject: InputObject, isProcessed: boolean)
+				if inputObject == self.moveTouchObject then
+					centerPosition = Vector2.new(
+						self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
+						self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
+					)
+					local direction = Vector2.new(
+						inputObject.Position.X - centerPosition.X,
+						inputObject.Position.Y - centerPosition.Y
+					)
+					DoMove(direction)
+					MoveStick(inputObject.Position)
+				end
 			end
-		end)
+		)
 		
 		self.onTouchEndedConn = UserInputService.TouchEnded:Connect(function(inputObject, isProcessed)
 			if inputObject == self.moveTouchObject then
@@ -9276,7 +9738,8 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 			newPath = PathfindingService:ComputeSmoothPathAsync(startPos, destination, MAX_PATHING_DISTANCE)
 			numAttempts = numAttempts + 1
 			
-			if newPath.Status == Enum.PathStatus.ClosestNoPath or newPath.Status == Enum.PathStatus.ClosestOutOfRange then
+			if newPath.Status == Enum.PathStatus.ClosestNoPath
+				or newPath.Status == Enum.PathStatus.ClosestOutOfRange then
 				newPath = nil
 				break
 			end
@@ -9318,7 +9781,9 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 			return
 		end
 		
-		if not lastDestination or (self.currentDestination - lastDestination).magnitude > RECALCULATE_PATH_THRESHOLD then
+		if not lastDestination
+			or (self.currentDestination - lastDestination).magnitude > RECALCULATE_PATH_THRESHOLD then
+			
 			local newPath = self:TryComputePath(currentPosition, self.currentDestination)
 			if newPath then
 				self:StartFollowingPath(newPath)
@@ -9334,7 +9799,7 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 			end
 		else
 			if self.moving then
-				self.currentPoints[#self.currentPoints] = self.currentDestination
+				table.insert(self.currentPoints, self.currentDestination)
 			else
 				self:GoToPoint(self.currentDestination)
 			end
@@ -9460,12 +9925,14 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 					workspace.CurrentCamera
 				}
 				local obstructRay = Ray.new(currentPosition - Vector3.new(0, 1, 0), moveDir * 3)
-				local obstructPart, obstructPoint, obstructNormal = workspace:FindPartOnRayWithIgnoreList(obstructRay, ignoreTable)
+				local obstructPart, obstructPoint, obstructNormal =
+					workspace:FindPartOnRayWithIgnoreList(obstructRay, ignoreTable)
 				
 				if obstructPart then
 					local heightOffset = Vector3.new(0, 100, 0)
 					local jumpCheckRay = Ray.new(obstructPoint + moveDir * 0.5 + heightOffset, -heightOffset)
-					local jumpCheckPart, jumpCheckPoint, jumpCheckNormal = workspace:FindPartOnRayWithIgnoreList(jumpCheckRay, ignoreTable)
+					local jumpCheckPart, jumpCheckPoint, jumpCheckNormal =
+						workspace:FindPartOnRayWithIgnoreList(jumpCheckRay, ignoreTable)
 					
 					local heightDifference = jumpCheckPoint.Y - currentPosition.Y
 					if heightDifference < 6 and heightDifference > -2 then
@@ -9528,7 +9995,9 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 			
 			ContextActionService:BindActivate(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonR2)
 			
-			self.userCFrameEnabledConn = VRService.UserCFrameEnabled:Connect(function() self:OnUserCFrameEnabled() end)
+			self.userCFrameEnabledConn = VRService.UserCFrameEnabled:Connect(
+				function() self:OnUserCFrameEnabled() end)
+			
 			self:OnUserCFrameEnabled()
 			
 			VRService:SetTouchpadMode(Enum.VRTouchpad.Left, Enum.VRTouchpadMode.VirtualThumbstick)
@@ -9612,23 +10081,38 @@ local VehicleController = {} do
 	
 	function VehicleController:BindContextActions()
 		if useTriggersForThrottle then
-			ContextActionService:BindActionAtPriority("throttleAccel", (function(actionName, inputState, inputObject)
+			local functionToBind = function(actionName, inputState, inputObject)
 				self:OnThrottleAccel(actionName, inputState, inputObject)
 				return Enum.ContextActionResult.Pass
-			end), false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonR2)
-			ContextActionService:BindActionAtPriority("throttleDeccel", (function(actionName, inputState, inputObject)
+			end
+			
+			ContextActionService:BindActionAtPriority("throttleAccel", functionToBind,
+				false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonR2)
+			
+			functionToBind = function(actionName, inputState, inputObject)
 				self:OnThrottleDeccel(actionName, inputState, inputObject)
 				return Enum.ContextActionResult.Pass
-			end), false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonL2)
+			end
+			
+			ContextActionService:BindActionAtPriority("throttleDeccel", functionToBind,
+				false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonL2)
 		end
-		ContextActionService:BindActionAtPriority("arrowSteerRight", (function(actionName, inputState, inputObject)
+		
+		local functionToBind = function(actionName, inputState, inputObject)
 			self:OnSteerRight(actionName, inputState, inputObject)
 			return Enum.ContextActionResult.Pass
-		end), false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Right)
-		ContextActionService:BindActionAtPriority("arrowSteerLeft", (function(actionName, inputState, inputObject)
+		end
+		
+		ContextActionService:BindActionAtPriority("arrowSteerRight", functionToBind,
+			false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Right)
+		
+		functionToBind = function(actionName, inputState, inputObject)
 			self:OnSteerLeft(actionName, inputState, inputObject)
 			return Enum.ContextActionResult.Pass
-		end), false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Left)
+		end
+		
+		ContextActionService:BindActionAtPriority("arrowSteerLeft", functionToBind,
+			false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Left)
 	end
 	
 	function VehicleController:Enable(enable: boolean, vehicleSeat: VehicleSeat)
@@ -9658,7 +10142,8 @@ local VehicleController = {} do
 	end
 	
 	function VehicleController:OnThrottleAccel(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+		if inputState == Enum.UserInputState.End
+		or inputState == Enum.UserInputState.Cancel then
 			self.acceleration = 0
 		else
 			self.acceleration = -1
@@ -9667,7 +10152,8 @@ local VehicleController = {} do
 	end
 	
 	function VehicleController:OnThrottleDeccel(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+		if inputState == Enum.UserInputState.End
+		or inputState == Enum.UserInputState.Cancel then
 			self.decceleration = 0
 		else
 			self.decceleration = 1
@@ -9676,7 +10162,8 @@ local VehicleController = {} do
 	end
 	
 	function VehicleController:OnSteerRight(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+		if inputState == Enum.UserInputState.End
+		or inputState == Enum.UserInputState.Cancel then
 			self.turningRight = 0
 		else
 			self.turningRight = 1
@@ -9685,7 +10172,8 @@ local VehicleController = {} do
 	end
 	
 	function VehicleController:OnSteerLeft(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+		if inputState == Enum.UserInputState.End
+		or inputState == Enum.UserInputState.Cancel then
 			self.turningLeft = 0
 		else
 			self.turningLeft = -1
@@ -9698,7 +10186,7 @@ local VehicleController = {} do
 		if self.vehicleSeat then
 			if cameraRelative then
 				-- This is the default steering mode
-				moveVector = moveVector + Vector3.new(self.steer, 0, self.throttle)
+				moveVector += Vector3.new(self.steer, 0, self.throttle)
 				if usingGamepad and onlyTriggersForThrottle and useTriggersForThrottle then
 					self.vehicleSeat.ThrottleFloat = -self.throttle
 				else
@@ -9923,7 +10411,7 @@ local ControlModule = {} do
 		if self.activeController then
 			return self.activeController:GetMoveVector()
 		end
-		return Vector3.new(0,0,0)
+		return Vector3.zero
 	end
 	
 	function ControlModule:GetActiveController()
@@ -9937,7 +10425,7 @@ local ControlModule = {} do
 			self.activeController:Enable(false)
 			
 			if self.moveFunction then
-				self.moveFunction(localPlayer, Vector3.new(0,0,0), true)
+				self.moveFunction(localPlayer, Vector3.zero, true)
 			end
 		end
 		
@@ -9970,9 +10458,12 @@ local ControlModule = {} do
 		
 		-- GuiService.TouchControlsEnabled == false and the active controller is a touch controller,
 		-- disable controls
-		if not GuiService.TouchControlsEnabled and UserInputService.TouchEnabled and
-			(self.activeControlModule == ClickToMove or self.activeControlModule == TouchThumbstick or
-				self.activeControlModule == DynamicThumbstick) then
+		if not GuiService.TouchControlsEnabled
+			and UserInputService.TouchEnabled
+			and (self.activeControlModule == ClickToMove
+				or self.activeControlModule == TouchThumbstick
+				or self.activeControlModule == DynamicThumbstick)
+		then
 			disable()
 			return
 		end
@@ -9985,6 +10476,7 @@ local ControlModule = {} do
 		if enable == nil then
 			enable = true
 		end
+		
 		self.controlsEnabled = enable
 		
 		if not self.activeController then
@@ -10013,7 +10505,8 @@ local ControlModule = {} do
 		
 		if DevMovementMode == Enum.DevComputerMovementMode.UserChoice then
 			computerModule = computerInputTypeToModuleMap[lastInputType]
-			if UserGameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove and computerModule == Keyboard then
+			if UserGameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove
+				and computerModule == Keyboard then
 				-- User has ClickToMove set in Settings, prefer ClickToMove controller for keyboard and mouse lastInputTypes
 				computerModule = ClickToMove
 			end
@@ -10022,7 +10515,8 @@ local ControlModule = {} do
 			computerModule = movementEnumToModuleMap[DevMovementMode]
 			
 			-- computerModule is expected to be nil here only when developer has selected Scriptable
-			if (not computerModule) and DevMovementMode ~= Enum.DevComputerMovementMode.Scriptable then
+			if (not computerModule)
+				and DevMovementMode ~= Enum.DevComputerMovementMode.Scriptable then
 				warn("No character control module is associated with DevComputerMovementMode ", DevMovementMode)
 			end
 		end
@@ -10045,8 +10539,10 @@ local ControlModule = {} do
 		if not UserInputService.TouchEnabled then
 			return nil, false
 		end
+		
 		local touchModule
 		local DevMovementMode = localPlayer.DevTouchMovementMode
+		
 		if DevMovementMode == Enum.DevTouchMovementMode.UserChoice then
 			touchModule = movementEnumToModuleMap[UserGameSettings.TouchMovementMode]
 		elseif DevMovementMode == Enum.DevTouchMovementMode.Scriptable then
@@ -10054,6 +10550,7 @@ local ControlModule = {} do
 		else
 			touchModule = movementEnumToModuleMap[DevMovementMode]
 		end
+		
 		return touchModule, true
 	end
 	
@@ -10123,7 +10620,11 @@ local ControlModule = {} do
 			-- Are we driving a vehicle ?
 			local vehicleConsumedInput = false
 			if self.vehicleController then
-				moveVector, vehicleConsumedInput = self.vehicleController:Update(moveVector, cameraRelative, self.activeControlModule==Gamepad)
+				moveVector, vehicleConsumedInput = self.vehicleController:Update(
+					moveVector,
+					cameraRelative,
+					self.activeControlModule == Gamepad
+				)
 			end
 			
 			-- If not, move the player
@@ -10137,7 +10638,8 @@ local ControlModule = {} do
 			--end
 			
 			-- And make them jump if needed
-			self.humanoid.Jump = self.activeController:GetIsJumping() or (self.touchJumpController and self.touchJumpController:GetIsJumping())
+			self.humanoid.Jump = self.activeController:GetIsJumping()
+				or (self.touchJumpController and self.touchJumpController:GetIsJumping())
 		end
 	end
 	
