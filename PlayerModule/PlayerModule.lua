@@ -9234,20 +9234,16 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 	
 end
 
-local REQUIRE_TouchThumbstick = (function()
---[[
 
-	TouchThumbstick
-
---]]
+local TouchThumbstick = setmetatable({}, BaseCharacterController) do
+	TouchThumbstick.__index = TouchThumbstick
+	
 	local Players = game:GetService("Players")
 	local GuiService = game:GetService("GuiService")
 	local UserInputService = game:GetService("UserInputService")
 	--[[ Constants ]]--
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
-	--[[ The Module ]]--
-	local TouchThumbstick = setmetatable({}, BaseCharacterController)
-	TouchThumbstick.__index = TouchThumbstick
+	
 	function TouchThumbstick.new()
 		local self = setmetatable(BaseCharacterController.new() :: any, TouchThumbstick)
 		
@@ -9420,9 +9416,8 @@ local REQUIRE_TouchThumbstick = (function()
 		
 		self.thumbstickFrame.Parent = parentFrame
 	end
-	return TouchThumbstick
 	
-end)()
+end
 
 local VRNavigation = setmetatable({}, BaseCharacterController) do
 	VRNavigation.__index = VRNavigation
@@ -10102,8 +10097,6 @@ local ControlModule = {} do
 	local DynamicThumbstick = REQUIRE_DynamicThumbstick
 	
 	local FFlagUserHideControlsWhenMenuOpen = getFastFlag("UserHideControlsWhenMenuOpen")
-	
-	local TouchThumbstick = REQUIRE_TouchThumbstick
 	
 	-- ClickToMove, VehicleController controllers handle only walk/run movement, jumping is handled by the
 	-- TouchJump controller if any of these are active
