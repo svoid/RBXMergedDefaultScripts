@@ -797,7 +797,7 @@ end
 
 
 
-local REQUIRE_CameraInput = (function()
+local CameraInput = {} do
 	local ContextActionService = game:GetService("ContextActionService")
 	local UserInputService = game:GetService("UserInputService")
 	local Players = game:GetService("Players")
@@ -919,7 +919,6 @@ local REQUIRE_CameraInput = (function()
 		worldDt = _worldDt
 	end)
 	
-	local CameraInput = {}
 	
 	do
 		local connectionList = {}
@@ -1353,10 +1352,10 @@ local REQUIRE_CameraInput = (function()
 		end
 	end
 	
-	return CameraInput
-end)()
+end
 
-local REQUIRE_CameraUI = (function()
+local CameraUI: any = {} do
+	
 	local Players = game:GetService("Players")
 	local TweenService = game:GetService("TweenService")
 	local StarterGui = game:GetService("StarterGui")
@@ -1512,7 +1511,6 @@ local REQUIRE_CameraUI = (function()
 		initialized = true
 	end
 	
-	local CameraUI: any = {}
 	
 	do
 		-- Instantaneously disable the toast or enable for opening later on. Used when switching camera modes.
@@ -1573,17 +1571,15 @@ local REQUIRE_CameraUI = (function()
 		end
 	end
 	
-	return CameraUI
-end)()
+end
 
 
-local REQUIRE_CameraToggleStateController = (function()
+local CameraToggleStateController do
 	local Players = game:GetService("Players")
 	local UserInputService = game:GetService("UserInputService")
 	local GameSettings = userSettings:GetService("UserGameSettings")
 	
-	local Input = REQUIRE_CameraInput
-	local CameraUI = REQUIRE_CameraUI
+	local Input = CameraInput
 	
 	local lastTogglePan = false
 	local lastTogglePanChange = tick()
@@ -1596,7 +1592,7 @@ local REQUIRE_CameraToggleStateController = (function()
 	
 	CameraUI.setCameraModeToastEnabled(false)
 	
-	return function(isFirstPerson: boolean)
+	CameraToggleStateController = function(isFirstPerson: boolean)
 		local togglePan = Input.getTogglePan()
 		local toastTimeout = 3
 		
@@ -1655,7 +1651,7 @@ local REQUIRE_CameraToggleStateController = (function()
 		lastFirstPerson = isFirstPerson
 	end
 	
-end)()
+end
 
 local REQUIRE_BaseCamera = (function()
 --[[
@@ -1695,10 +1691,6 @@ local REQUIRE_BaseCamera = (function()
 	
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
 	local FIRST_PERSON_DISTANCE_MIN = 0.5
-	
-	local CameraToggleStateController = REQUIRE_CameraToggleStateController
-	local CameraInput = REQUIRE_CameraInput
-	local CameraUI = REQUIRE_CameraUI
 	
 	--[[ Roblox Services ]]--
 	local Players = game:GetService("Players")
@@ -2547,7 +2539,6 @@ local REQUIRE_ClassicCamera = (function()
 	local PlayersService = game:GetService("Players")
 	local VRService = game:GetService("VRService")
 	
-	local CameraInput = REQUIRE_CameraInput
 	local Util = CameraUtils
 	
 	--[[ The Module ]]--
@@ -3343,7 +3334,6 @@ local REQUIRE_LegacyCamera = (function()
 	local PITCH_LIMIT = math.rad(80)
 	
 	local Util = CameraUtils
-	local CameraInput = REQUIRE_CameraInput
 	
 	--[[ Services ]]--
 	local PlayersService = game:GetService('Players')
@@ -3694,7 +3684,6 @@ local REQUIRE_OrbitalCamera = (function()
 	externalProperties["UseAzimuthLimits"] = false -- Full rotation around Y axis available by default
 	
 	local Util = CameraUtils
-	local CameraInput = REQUIRE_CameraInput
 	
 	--[[ Services ]]--
 	local PlayersService = game:GetService('Players')
@@ -4284,7 +4273,6 @@ local REQUIRE_VRBaseCamera = (function()
 	
 	local VRService = game:GetService("VRService")
 	
-	local CameraInput = REQUIRE_CameraInput
 	
 	local Players = game:GetService("Players")
 	local player = Players.LocalPlayer
@@ -4639,7 +4627,6 @@ local REQUIRE_VRCamera = (function()
 	local FP_ZOOM = 0.5
 	
 	-- requires
-	local CameraInput = REQUIRE_CameraInput
 	local Util = CameraUtils
 	
 	--[[ The Module ]]--
@@ -5161,7 +5148,6 @@ local REQUIRE_VehicleCamera = (function()
 	local RunService = game:GetService("RunService")
 	
 	local BaseCamera = REQUIRE_BaseCamera
-	local CameraInput = REQUIRE_CameraInput
 	local CameraUtils = CameraUtils
 	local VehicleCameraCore = REQUIRE_VehicleCameraCore
 	local VehicleCameraConfig = REQUIRE_VehicleCameraConfig
@@ -5389,7 +5375,6 @@ local REQUIRE_VRVehicleCamera = (function()
 	local TP_FOLLOW_ANGLE_DOT = 0.56
 	
 	local VRBaseCamera = REQUIRE_VRBaseCamera
-	local CameraInput = REQUIRE_CameraInput
 	local CameraUtils = CameraUtils
 	local VehicleCamera = REQUIRE_VehicleCamera
 	local VehicleCameraCore =  REQUIRE_VehicleCameraCore
@@ -5645,7 +5630,6 @@ local CameraModule = {} do
 
 	-- Static camera utils
 	local CameraUtils = CameraUtils
-	local CameraInput = REQUIRE_CameraInput
 
 	-- Load Roblox Camera Controller Modules
 	local ClassicCamera = REQUIRE_ClassicCamera
