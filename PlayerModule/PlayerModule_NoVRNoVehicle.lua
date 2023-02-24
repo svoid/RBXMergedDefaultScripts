@@ -1626,7 +1626,6 @@ local BaseCamera = {} do
 	local MIN_Y = math.rad(-80)
 	local MAX_Y = math.rad(80)
 	
-	local SEAT_OFFSET = Vector3.new(0, 5, 0)
 	local HEAD_OFFSET = Vector3.new(0, 1.5, 0)
 	local R15_HEAD_OFFSET = Vector3.new(0, 1.5, 0)
 	local R15_HEAD_OFFSET_NO_SCALING = Vector3.new(0, 2, 0)
@@ -1991,11 +1990,6 @@ local BaseCamera = {} do
 					result = bodyPartToFollow.CFrame.p + bodyPartToFollow.CFrame:vectorToWorldSpace(heightOffset + humanoid.CameraOffset)
 				end
 				
-			elseif cameraSubject:IsA("VehicleSeat") then
-				local offset = SEAT_OFFSET
-				result = cameraSubject.CFrame.p + cameraSubject.CFrame:vectorToWorldSpace(offset)
-			elseif cameraSubject:IsA("SkateboardPlatform") then
-				result = cameraSubject.CFrame.p + SEAT_OFFSET
 			elseif cameraSubject:IsA("BasePart") then
 				result = cameraSubject.CFrame.p
 			elseif cameraSubject:IsA("Model") then
@@ -3104,7 +3098,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 	local tweenAcceleration = math.rad(220) -- Radians/Second^2
 	local tweenSpeed = math.rad(0)          -- Radians/Second
 	local tweenMaxSpeed = math.rad(250)     -- Radians/Second
-	local TIME_BEFORE_AUTO_ROTATE = 2       -- Seconds, used when auto-aligning camera with vehicles
+	local TIME_BEFORE_AUTO_ROTATE = 2       -- Seconds
 	
 	local INITIAL_CAMERA_ANGLE = CFrame.fromOrientation(math.rad(-15), 0, 0)
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
@@ -3184,8 +3178,6 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		
 		local humanoid = self:GetHumanoid()
 		local cameraSubject = camera.CameraSubject
-		local isInVehicle = cameraSubject and cameraSubject:IsA("VehicleSeat")
-		local isOnASkateboard = cameraSubject and cameraSubject:IsA("SkateboardPlatform")
 		local isClimbing = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Climbing
 		
 		if self.lastUpdate == nil or timeDelta > 1 then
@@ -3231,24 +3223,12 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 					
 					local isInFirstPerson = self:IsInFirstPerson()
 					
-					if (isInVehicle or isOnASkateboard or (self.isFollowCamera and isClimbing))
+					if (self.isFollowCamera and isClimbing)
 					and self.lastUpdate
 					and humanoid
 					and humanoid.Torso then
 						
-						if isInFirstPerson then
-							if self.lastSubjectCFrame
-							and (isInVehicle or isOnASkateboard)
-							and cameraSubject:IsA("BasePart") then
-								
-								local y = -CameraUtils.GetAngleBetweenXZVectors(self.lastSubjectCFrame.lookVector, cameraSubject.CFrame.lookVector)
-								if CameraUtils.IsFinite(y) then
-									rotateInput += Vector2.new(y, 0)
-								end
-								
-								tweenSpeed = 0
-							end
-						elseif not userRecentlyPannedCamera then
+						if not isInFirstPerson and not userRecentlyPannedCamera then
 							local forwardVector = humanoid.Torso.CFrame.lookVector
 							
 							tweenSpeed = math.clamp(
@@ -3315,11 +3295,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 			self.lastCameraTransform = newCameraCFrame
 			self.lastCameraFocus = newCameraFocus
 			
-			if (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
-				self.lastSubjectCFrame = cameraSubject.CFrame
-			else
-				self.lastSubjectCFrame = nil
-			end
+			self.lastSubjectCFrame = nil
 		end
 		
 		self.lastUpdate = now
@@ -3691,8 +3667,6 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		local newCameraCFrame = camera.CFrame
 		local newCameraFocus = camera.Focus
 		local cameraSubject = camera and camera.CameraSubject
-		local isInVehicle = cameraSubject and cameraSubject:IsA("VehicleSeat")
-		local isOnASkateboard = cameraSubject and cameraSubject:IsA("SkateboardPlatform")
 		
 		if self.lastUpdate == nil or timeDelta > 1 then
 			self.lastCameraTransform = nil
@@ -3750,470 +3724,11 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 			
 			self.lastCameraTransform = newCameraCFrame
 			self.lastCameraFocus = newCameraFocus
-			if (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
-				self.lastSubjectCFrame = cameraSubject.CFrame
-			else
-				self.lastSubjectCFrame = nil
-			end
+			self.lastSubjectCFrame = nil
 		end
 		
 		self.lastUpdate = now
 		return newCameraCFrame, newCameraFocus
-	end
-	
-end
-
-
-local VEHICLE_CAMERA_CONFIG = {
-	-- (hz) Camera response stiffness along the pitch axis
-	pitchStiffness = 0.5,
-	
-	-- (hz) Camera response stiffness along the yaw axis
-	yawStiffness = 2.5,
-	
-	-- (s) Delay after use input before the camera can begin autorotating
-	autocorrectDelay = 1,
-	
-	-- (studs/s) Minimum vehicle speed before the autocorrect begins to activate
-	autocorrectMinCarSpeed = 16,
-	
-	-- (studs/s) Vehicle speed where autocorrect is fully activated
-	autocorrectMaxCarSpeed = 32,
-	
-	-- (hz) Autocorrect stiffness/speed
-	autocorrectResponse = 0.5,
-	
-	-- (deg/s) Minimum angular yaw velocity before the camera rotation cutoff begins
-	cutoffMinAngularVelYaw = 60,
-	
-	-- (deg/s) Maximum angular yaw velocity where the camera rotation cutoff is fully activated
-	cutoffMaxAngularVelYaw = 180,
-	
-	-- (deg/s) Minimum angular pitch velocity before the camera rotation cutoff begins
-	cutoffMinAngularVelPitch = 15,
-	
-	-- (deg/s) Maximum angular pitch velocity where the camera rotation cutoff is fully activated
-	cutoffMaxAngularVelPitch = 60,
-	
-	-- (deg) Default pitch angle relative to the horizon
-	pitchBaseAngle = 18,
-	
-	-- (deg) Half-size of the deadzone angle for pitch autocorrect
-	pitchDeadzoneAngle = 12,
-	
-	-- (unitless) Multiplier for camera response stiffness in first-person mode
-	firstPersonResponseMul = 10,
-	
-	-- (hz) Responsiveness of yaw cutoff to rising angular velocities
-	yawReponseDampingRising = 1,
-	
-	-- (hz) Responsiveness of yaw cutoff to falling angular velocities
-	yawResponseDampingFalling = 3,
-	
-	-- (hz) Responsiveness of pitch cutoff to rising angular velocities
-	pitchReponseDampingRising = 1,
-	
-	-- (hz) Responsiveness of pitch cutoff to falling angular velocities
-	pitchResponseDampingFalling = 3,
-	
-	-- (unitless) Initial zoom radius as a fraction of car radius
-	initialZoomRadiusMul = 3,
-	
-	-- (unitless) Vertical third-person camera offset as a fraction of car radius
-	verticalCenterOffset = 0.33,
-}
-
-local VehicleCameraCore do
-	
-	local map = CameraUtils.map
-	local mapClamp = CameraUtils.mapClamp
-	local sanitizeAngle = CameraUtils.sanitizeAngle
-	
-	-- extract sanitized yaw from a CFrame rotation
-	local function getYaw(cf)
-		local _, yaw = cf:toEulerAnglesYXZ()
-		return sanitizeAngle(yaw)
-	end
-	
-	-- extract sanitized pitch from a CFrame rotation
-	local function getPitch(cf)
-		local pitch = cf:toEulerAnglesYXZ()
-		return sanitizeAngle(pitch)
-	end
-	
-	-- step a damped angular spring axis
-	local function stepSpringAxis(dt, f, g, p, v)
-		local offset = sanitizeAngle(p - g)
-		local decay = math.exp(-f * dt)
-		
-		local p1 = sanitizeAngle((offset * (1 + f*dt) + v*dt) * decay + g)
-		local v1 = (v * (1 - f*dt) - offset * (f*f * dt)) * decay
-		
-		return p1, v1
-	end
-	
-	-- value damper with separate response frequencies for rising and falling values
-	local VariableEdgeSpring = {} do
-		VariableEdgeSpring.__index = VariableEdgeSpring
-		
-		function VariableEdgeSpring.new(fRising, fFalling, position)
-			return setmetatable({
-				fRising = fRising,
-				fFalling = fFalling,
-				g = position,
-				p = position,
-				v = position*0,
-			}, VariableEdgeSpring)
-		end
-		
-		function VariableEdgeSpring:step(dt)
-			local fRising = self.fRising
-			local fFalling = self.fFalling
-			local g = self.g
-			local p0 = self.p
-			local v0 = self.v
-			
-			local f = 2*math.pi*(v0 > 0 and fRising or fFalling)
-			
-			local offset = p0 - g
-			local decay = math.exp(-f*dt)
-			
-			local p1 = (offset * (1 + f*dt) + v0*dt) * decay + g
-			local v1 = (v0 * (1 - f*dt) - offset * (f*f * dt)) * decay
-			
-			self.p = p1
-			self.v = v1
-			
-			return p1
-		end
-	end
-	
-	-- damps a 3D rotation in Tait-Bryan YXZ space, filtering out Z
-	local YawPitchSpring = {} do
-		YawPitchSpring.__index = YawPitchSpring
-		
-		function YawPitchSpring.new(cf)
-			assert(typeof(cf) == "CFrame")
-			
-			return setmetatable({
-				yawG = getYaw(cf), -- yaw goal
-				yawP = getYaw(cf), -- yaw position
-				yawV = 0, -- yaw velocity
-				
-				pitchG = getPitch(cf), -- pitch goal
-				pitchP = getPitch(cf), -- pitch position
-				pitchV = 0, -- pitch velocity
-				
-				-- yaw/pitch response springs
-				fSpringYaw = VariableEdgeSpring.new(
-					VEHICLE_CAMERA_CONFIG.yawReponseDampingRising,
-					VEHICLE_CAMERA_CONFIG.yawResponseDampingFalling,
-					0
-				),
-				
-				fSpringPitch = VariableEdgeSpring.new(
-					VEHICLE_CAMERA_CONFIG.pitchReponseDampingRising,
-					VEHICLE_CAMERA_CONFIG.pitchResponseDampingFalling,
-					0
-				),
-			}, YawPitchSpring)
-		end
-		
-		-- Extract Tait-Bryan angles from a CFrame rotation
-		function YawPitchSpring:setGoal(goalCFrame)
-			assert(typeof(goalCFrame) == "CFrame")
-			
-			self.yawG = getYaw(goalCFrame)
-			self.pitchG = getPitch(goalCFrame)
-		end
-		
-		function YawPitchSpring:getCFrame()
-			return CFrame.fromEulerAnglesYXZ(self.pitchP, self.yawP, 0)
-		end
-		
-		function YawPitchSpring:step(dt, pitchVel, yawVel, firstPerson)
-			assert(type(dt) == "number")
-			assert(type(yawVel) == "number")
-			assert(type(pitchVel) == "number")
-			assert(type(firstPerson) == "number")
-			
-			local fSpringYaw = self.fSpringYaw
-			local fSpringPitch = self.fSpringPitch
-			
-			-- calculate the frequency spring
-			fSpringYaw.g = mapClamp(
-				map(firstPerson, 0, 1, yawVel, 0),
-				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMinAngularVelYaw),
-				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMaxAngularVelYaw),
-				1, 0
-			)
-			
-			fSpringPitch.g = mapClamp(
-				map(firstPerson, 0, 1, pitchVel, 0),
-				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMinAngularVelPitch),
-				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMaxAngularVelPitch),
-				1, 0
-			)
-			
-			-- calculate final frequencies
-			local fYaw = 2 * math.pi * VEHICLE_CAMERA_CONFIG.yawStiffness * fSpringYaw:step(dt)
-			local fPitch = 2 * math.pi * VEHICLE_CAMERA_CONFIG.pitchStiffness * fSpringPitch:step(dt)
-			
-			-- adjust response for first person
-			fPitch *= map(firstPerson, 0, 1, 1, VEHICLE_CAMERA_CONFIG.firstPersonResponseMul)
-			fYaw *= map(firstPerson, 0, 1, 1, VEHICLE_CAMERA_CONFIG.firstPersonResponseMul)
-			
-			-- step yaw
-			self.yawP, self.yawV = stepSpringAxis(
-				dt,
-				fYaw,
-				self.yawG,
-				self.yawP,
-				self.yawV
-			)
-			
-			-- step pitch
-			self.pitchP, self.pitchV = stepSpringAxis(
-				dt,
-				fPitch,
-				self.pitchG,
-				self.pitchP,
-				self.pitchV
-			)
-			
-			return self:getCFrame()
-		end
-	end
-	
-	VehicleCameraCore = {} do
-		VehicleCameraCore.__index = VehicleCameraCore
-		
-		function VehicleCameraCore.new(transform)
-			return setmetatable({
-				vrs = YawPitchSpring.new(transform)
-			}, VehicleCameraCore)
-		end
-		
-		function VehicleCameraCore:step(dt, pitchVel, yawVel, firstPerson)
-			return self.vrs:step(dt, pitchVel, yawVel, firstPerson)
-		end
-		
-		function VehicleCameraCore:setTransform(transform)
-			self.vrs:setGoal(transform)
-		end
-	end
-	
-end
-
-local VehicleCamera = setmetatable({}, BaseCamera) do
-	VehicleCamera.__index = VehicleCamera
-
-	local EPSILON = 1e-3
-	local PITCH_LIMIT = math.rad(80)
-	local YAW_DEFAULT = math.rad(0)
-	local ZOOM_MINIMUM = 0.5
-	local ZOOM_SENSITIVITY_CURVATURE = 0.5
-	
-	local map = CameraUtils.map
-	local Spring = CameraUtils.Spring
-	local mapClamp = CameraUtils.mapClamp
-	local sanitizeAngle = CameraUtils.sanitizeAngle
-	
-	-- pitch-axis rotational velocity of a part with a given CFrame and total RotVelocity
-	local function pitchVelocity(rotVel, cf)
-		return math.abs(cf.XVector:Dot(rotVel))
-	end
-	
-	-- yaw-axis rotational velocity of a part with a given CFrame and total RotVelocity
-	local function yawVelocity(rotVel, cf)
-		return math.abs(cf.YVector:Dot(rotVel))
-	end
-	
-	-- track physics solver time delta separately from the render loop to correctly synchronize time delta
-	local worldDt = 1/60
-	RunService.Stepped:Connect(function(_, _worldDt)
-		worldDt = _worldDt
-	end)
-	
-	function VehicleCamera.new()
-		local self = setmetatable(BaseCamera.new(), VehicleCamera)
-		self:Reset()
-		return self
-	end
-	
-	function VehicleCamera:Reset()
-		self.vehicleCameraCore = VehicleCameraCore.new(self:GetSubjectCFrame())
-		self.pitchSpring = Spring.new(0, -math.rad(VEHICLE_CAMERA_CONFIG.pitchBaseAngle))
-		self.yawSpring = Spring.new(0, YAW_DEFAULT)
-		self.lastPanTick = 0
-		
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		
-		assert(camera)
-		assert(cameraSubject)
-		assert(cameraSubject:IsA("VehicleSeat"))
-		
-		local assemblyParts = cameraSubject:GetConnectedParts(true) -- passing true to recursively get all assembly parts
-		local assemblyPosition, assemblyRadius = CameraUtils.getLooseBoundingSphere(assemblyParts)
-		
-		assemblyRadius = math.max(assemblyRadius, EPSILON)
-		
-		self.assemblyRadius = assemblyRadius
-		self.assemblyOffset = cameraSubject.CFrame:Inverse()*assemblyPosition -- seat-space offset of the assembly bounding sphere center
-		
-		self:_StepInitialZoom()
-	end
-	
-	function VehicleCamera:_StepInitialZoom()
-		self:SetCameraToSubjectDistance(math.max(
-			ZoomController.GetZoomRadius(),
-			self.assemblyRadius*VEHICLE_CAMERA_CONFIG.initialZoomRadiusMul
-			))
-	end
-	
-	function VehicleCamera:_StepRotation(dt, vdotz): CFrame
-		local yawSpring = self.yawSpring
-		local pitchSpring = self.pitchSpring
-		
-		local rotationInput = CameraInput.getRotation(true)
-		local dYaw = -rotationInput.X
-		local dPitch = -rotationInput.Y
-		
-		yawSpring.pos = sanitizeAngle(yawSpring.pos + dYaw)
-		pitchSpring.pos = sanitizeAngle(math.clamp(
-			pitchSpring.pos + dPitch,
-			-PITCH_LIMIT,
-			PITCH_LIMIT
-		))
-		
-		if CameraInput.getRotationActivated() then
-			self.lastPanTick = os.clock()
-		end
-		
-		local pitchBaseAngle = -math.rad(VEHICLE_CAMERA_CONFIG.pitchBaseAngle)
-		local pitchDeadzoneAngle = math.rad(VEHICLE_CAMERA_CONFIG.pitchDeadzoneAngle)
-		
-		if os.clock() - self.lastPanTick > VEHICLE_CAMERA_CONFIG.autocorrectDelay then
-			-- adjust autocorrect response based on forward velocity
-			local autocorrectResponse = mapClamp(
-				vdotz,
-				VEHICLE_CAMERA_CONFIG.autocorrectMinCarSpeed,
-				VEHICLE_CAMERA_CONFIG.autocorrectMaxCarSpeed,
-				0,
-				VEHICLE_CAMERA_CONFIG.autocorrectResponse
-			)
-			
-			yawSpring.freq = autocorrectResponse
-			pitchSpring.freq = autocorrectResponse
-			
-			-- zero out response under a threshold
-			if yawSpring.freq < EPSILON then
-				yawSpring.vel = 0
-			end
-			
-			if pitchSpring.freq < EPSILON then
-				pitchSpring.vel = 0
-			end
-			
-			if math.abs(sanitizeAngle(pitchBaseAngle - pitchSpring.pos)) <= pitchDeadzoneAngle then
-				-- do nothing within the deadzone
-				pitchSpring.goal = pitchSpring.pos
-			else
-				pitchSpring.goal = pitchBaseAngle
-			end
-		else
-			yawSpring.freq = 0
-			yawSpring.vel = 0
-			
-			pitchSpring.freq = 0
-			pitchSpring.vel = 0
-			
-			pitchSpring.goal = pitchBaseAngle
-		end
-		
-		return CFrame.fromEulerAnglesYXZ(
-			pitchSpring:step(dt),
-			yawSpring:step(dt),
-			0
-		)
-	end
-	
-	function VehicleCamera:_GetThirdPersonLocalOffset()
-		return self.assemblyOffset + Vector3.new(
-			0,
-			self.assemblyRadius * VEHICLE_CAMERA_CONFIG.verticalCenterOffset,
-			0
-		)
-	end
-	
-	function VehicleCamera:_GetFirstPersonLocalOffset(subjectCFrame: CFrame)
-		local character = localPlayer.Character
-		
-		if character and character.Parent then
-			local head = character:FindFirstChild("Head")
-			
-			if head and head:IsA("BasePart") then
-				return subjectCFrame:Inverse()*head.Position
-			end
-		end
-		
-		return self:_GetThirdPersonLocalOffset()
-	end
-	
-	function VehicleCamera:Update()
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		local vehicleCameraCore = self.vehicleCameraCore
-		
-		assert(camera)
-		assert(cameraSubject)
-		assert(cameraSubject:IsA("VehicleSeat"))
-		
-		-- consume the physics solver time delta to account for mismatched physics/render cycles
-		local dt = worldDt
-		worldDt = 0
-		
-		-- get subject info
-		local subjectCFrame: CFrame = self:GetSubjectCFrame()
-		local subjectVel: Vector3 = self:GetSubjectVelocity()
-		local subjectRotVel = self:GetSubjectRotVelocity()
-		
-		-- measure the local-to-world-space forward velocity of the vehicle
-		local vDotZ = math.abs(subjectVel:Dot(subjectCFrame.ZVector))
-		local yawVel = yawVelocity(subjectRotVel, subjectCFrame)
-		local pitchVel = pitchVelocity(subjectRotVel, subjectCFrame)
-		
-		-- step camera components forward
-		local zoom = self:StepZoom()
-		local objectRotation = self:_StepRotation(dt, vDotZ)
-		
-		-- mix third and first person offsets in local space
-		local firstPerson = mapClamp(zoom, ZOOM_MINIMUM, self.assemblyRadius, 1, 0)
-		
-		local tpOffset = self:_GetThirdPersonLocalOffset()
-		local fpOffset = self:_GetFirstPersonLocalOffset(subjectCFrame)
-		local localOffset = tpOffset:Lerp(fpOffset, firstPerson)
-		
-		-- step core forward
-		vehicleCameraCore:setTransform(subjectCFrame)
-		local processedRotation = vehicleCameraCore:step(dt, pitchVel, yawVel, firstPerson)
-		
-		-- calculate final focus & cframe
-		local focus = CFrame.new(subjectCFrame*localOffset)*processedRotation*objectRotation
-		local cf = focus * CFrame.new(0, 0, zoom)
-		
-		return cf, focus
-	end
-	
-	function VehicleCamera:EnterFirstPerson()
-		self.inFirstPerson = true
-		self:UpdateMouseBehavior()
-	end
-	
-	function VehicleCamera:LeaveFirstPerson()
-		self.inFirstPerson = false
-		self:UpdateMouseBehavior()
 	end
 	
 end
@@ -4584,10 +4099,6 @@ local TransparencyController = {} do
 			character = subject.Parent
 		end
 		
-		if subject and subject:IsA("VehicleSeat") and subject.Occupant then
-			character = subject.Occupant.Parent
-		end
-		
 		if character then
 			self:SetupTransparency(character)
 		else
@@ -4865,29 +4376,6 @@ local CameraModule = {} do
 		end
 	end
 
-	function CameraModule:ShouldUseVehicleCamera()
-		local camera = workspace.CurrentCamera
-		if not camera then
-			return false
-		end
-
-		local cameraType = camera.CameraType
-		local cameraSubject = camera.CameraSubject
-
-		local isEligibleType = cameraType == Enum.CameraType.Custom
-			or cameraType == Enum.CameraType.Follow
-		
-		local isEligibleSubject = cameraSubject
-			and cameraSubject:IsA("VehicleSeat")
-			or false
-		
-		local isEligibleOcclusionMode = self.occlusionMode ~= Enum.DevCameraOcclusionMode.Invisicam
-
-		return isEligibleSubject
-			and isEligibleType
-			and isEligibleOcclusionMode
-	end
-
 	-- When supplied, legacyCameraType is used and cameraMovementMode is ignored (should be nil anyways)
 	-- Next, if userCameraCreator is passed in, that is used as the cameraCreator
 	function CameraModule:ActivateCameraController(cameraMovementMode, legacyCameraType: Enum.CameraType?)
@@ -4944,11 +4432,6 @@ local CameraModule = {} do
 				warn("ActivateCameraController did not select a module.")
 				return
 			end
-		end
-
-		local isVehicleCamera = self:ShouldUseVehicleCamera()
-		if isVehicleCamera then
-			newCameraCreator = VehicleCamera
 		end
 
 		-- Create the camera control module we need if it does not already exist in instantiatedCameraControllers
@@ -7201,7 +6684,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		ShowPath = true,
 		PlayFailureAnimation = true,
 		UseDirectPath = false,
-		UseDirectPathForVehicle = true,
 		AgentSizeIncreaseFactor = 1.0,
 		UnreachableWaypointTimeout = 8,
 	}
@@ -7277,13 +6759,10 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			local self = setmetatable({}, Pather)
 			
 			local directPathForHumanoid
-			local directPathForVehicle
 			if overrideUseDirectPath ~= nil then
 				directPathForHumanoid = overrideUseDirectPath
-				directPathForVehicle = overrideUseDirectPath
 			else
 				directPathForHumanoid = configuration.UseDirectPath
-				directPathForVehicle = configuration.UseDirectPathForVehicle
 			end
 			
 			self.Cancelled = false
@@ -7343,47 +6822,23 @@ local ClickToMove = setmetatable({}, Keyboard) do
 				local agentHeight = 5
 				local agentCanJump = true
 				
-				local seat = self.Humanoid.SeatPart
-				if seat and seat:IsA("VehicleSeat") then
-					-- Humanoid is seated on a vehicle
-					local vehicle = seat:FindFirstAncestorOfClass("Model")
-					if vehicle then
-						-- Make sure the PrimaryPart is set to the vehicle seat while we compute the extends.
-						local tempPrimaryPart = vehicle.PrimaryPart
-						vehicle.PrimaryPart = seat
-						
-						-- For now, only direct path
-						if directPathForVehicle then
-							local extents: Vector3 = vehicle:GetExtentsSize()
-							agentRadius = configuration.AgentSizeIncreaseFactor * 0.5 * math.sqrt(extents.X * extents.X + extents.Z * extents.Z)
-							agentHeight = configuration.AgentSizeIncreaseFactor * extents.Y
-							agentCanJump = false
-							self.AgentCanFollowPath = true
-							self.DirectPath = directPathForVehicle
-						end
-						
-						-- Reset PrimaryPart
-						vehicle.PrimaryPart = tempPrimaryPart
+				local extents: Vector3?
+				if FFlagUserExcludeNonCollidableForPathfinding then
+					local character: Model? = getCharacter()
+					if character ~= nil then
+						extents = getCollidableExtentsSize(character)
 					end
-				else
-					local extents: Vector3?
-					if FFlagUserExcludeNonCollidableForPathfinding then
-						local character: Model? = getCharacter()
-						if character ~= nil then
-							extents = getCollidableExtentsSize(character)
-						end
-					end
-					if extents == nil then
-						extents = getCharacter():GetExtentsSize()
-					end
-					assert(extents, "")
-					agentRadius = configuration.AgentSizeIncreaseFactor * 0.5 * math.sqrt(extents.X * extents.X + extents.Z * extents.Z)
-					agentHeight = configuration.AgentSizeIncreaseFactor * extents.Y
-					agentCanJump = self.Humanoid.JumpPower > 0
-					self.AgentCanFollowPath = true
-					self.DirectPath = directPathForHumanoid :: boolean
-					self.DirectPathRiseFirst = self.Humanoid.Sit
 				end
+				if extents == nil then
+					extents = getCharacter():GetExtentsSize()
+				end
+				assert(extents, "")
+				agentRadius = configuration.AgentSizeIncreaseFactor * 0.5 * math.sqrt(extents.X * extents.X + extents.Z * extents.Z)
+				agentHeight = configuration.AgentSizeIncreaseFactor * extents.Y
+				agentCanJump = self.Humanoid.JumpPower > 0
+				self.AgentCanFollowPath = true
+				self.DirectPath = directPathForHumanoid :: boolean
+				self.DirectPathRiseFirst = self.Humanoid.Sit
 				
 				self.pathResult = PathfindingService:CreatePath({
 					AgentRadius = agentRadius,
@@ -8373,213 +7828,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 end
 
 
-local VehicleController = {} do
-	VehicleController.__index = VehicleController
-		
-	-- Note that VehicleController does not derive from BaseCharacterController, it is a special case
-	
-	--[[
-		// FileName: VehicleControl
-		// Version 1.0
-		// Written by: jmargh
-		// Description: Implements in-game vehicle controls for all input devices
-
-		// NOTE: This works for basic vehicles (single vehicle seat). If you use custom VehicleSeat code,
-		// multiple VehicleSeats or your own implementation of a VehicleSeat this will not work.
-	--]]
-	
-	--[[ Constants ]]--
-	-- Set this to true if you want to instead use the triggers for the throttle
-	local useTriggersForThrottle = true
-	-- Also set this to true if you want the thumbstick to not affect throttle, only triggers when a gamepad is conected
-	local onlyTriggersForThrottle = false
-	
-	local AUTO_PILOT_DEFAULT_MAX_STEERING_ANGLE = 35
-	
-	function VehicleController.new(CONTROL_ACTION_PRIORITY)
-		local self = setmetatable({}, VehicleController)
-		
-		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
-		
-		self.enabled = false
-		self.vehicleSeat = nil
-		self.throttle = 0
-		self.steer = 0
-		
-		self.acceleration = 0
-		self.decceleration = 0
-		self.turningRight = 0
-		self.turningLeft = 0
-		
-		self.vehicleMoveVector = Vector3.zero
-		
-		self.autoPilot = {}
-		self.autoPilot.MaxSpeed = 0
-		self.autoPilot.MaxSteeringAngle = 0
-		
-		return self
-	end
-	
-	function VehicleController:BindContextActions()
-		if useTriggersForThrottle then
-			local functionToBind = function(actionName, inputState, inputObject)
-				self:OnThrottleAccel(actionName, inputState, inputObject)
-				return Enum.ContextActionResult.Pass
-			end
-			
-			ContextActionService:BindActionAtPriority("throttleAccel", functionToBind,
-				false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonR2)
-			
-			functionToBind = function(actionName, inputState, inputObject)
-				self:OnThrottleDeccel(actionName, inputState, inputObject)
-				return Enum.ContextActionResult.Pass
-			end
-			
-			ContextActionService:BindActionAtPriority("throttleDeccel", functionToBind,
-				false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonL2)
-		end
-		
-		local functionToBind = function(actionName, inputState, inputObject)
-			self:OnSteerRight(actionName, inputState, inputObject)
-			return Enum.ContextActionResult.Pass
-		end
-		
-		ContextActionService:BindActionAtPriority("arrowSteerRight", functionToBind,
-			false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Right)
-		
-		functionToBind = function(actionName, inputState, inputObject)
-			self:OnSteerLeft(actionName, inputState, inputObject)
-			return Enum.ContextActionResult.Pass
-		end
-		
-		ContextActionService:BindActionAtPriority("arrowSteerLeft", functionToBind,
-			false, self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Left)
-	end
-	
-	function VehicleController:Enable(enable: boolean, vehicleSeat: VehicleSeat)
-		if enable == self.enabled and vehicleSeat == self.vehicleSeat then
-			return
-		end
-		
-		self.enabled = enable
-		self.vehicleMoveVector = Vector3.zero
-		
-		if enable then
-			if vehicleSeat then
-				self.vehicleSeat = vehicleSeat
-				
-				self:SetupAutoPilot()
-				self:BindContextActions()
-			end
-		else
-			if useTriggersForThrottle then
-				ContextActionService:UnbindAction("throttleAccel")
-				ContextActionService:UnbindAction("throttleDeccel")
-			end
-			ContextActionService:UnbindAction("arrowSteerRight")
-			ContextActionService:UnbindAction("arrowSteerLeft")
-			self.vehicleSeat = nil
-		end
-	end
-	
-	function VehicleController:OnThrottleAccel(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End
-		or inputState == Enum.UserInputState.Cancel then
-			self.acceleration = 0
-		else
-			self.acceleration = -1
-		end
-		self.throttle = self.acceleration + self.decceleration
-	end
-	
-	function VehicleController:OnThrottleDeccel(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End
-		or inputState == Enum.UserInputState.Cancel then
-			self.decceleration = 0
-		else
-			self.decceleration = 1
-		end
-		self.throttle = self.acceleration + self.decceleration
-	end
-	
-	function VehicleController:OnSteerRight(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End
-		or inputState == Enum.UserInputState.Cancel then
-			self.turningRight = 0
-		else
-			self.turningRight = 1
-		end
-		self.steer = self.turningRight + self.turningLeft
-	end
-	
-	function VehicleController:OnSteerLeft(actionName, inputState, inputObject)
-		if inputState == Enum.UserInputState.End
-		or inputState == Enum.UserInputState.Cancel then
-			self.turningLeft = 0
-		else
-			self.turningLeft = -1
-		end
-		self.steer = self.turningRight + self.turningLeft
-	end
-	
-	-- Call this from a function bound to Renderstep with Input Priority
-	function VehicleController:Update(moveVector: Vector3, cameraRelative: boolean, usingGamepad: boolean)
-		if self.vehicleSeat then
-			if cameraRelative then
-				-- This is the default steering mode
-				moveVector += Vector3.new(self.steer, 0, self.throttle)
-				if usingGamepad and onlyTriggersForThrottle and useTriggersForThrottle then
-					self.vehicleSeat.ThrottleFloat = -self.throttle
-				else
-					self.vehicleSeat.ThrottleFloat = -moveVector.Z
-				end
-				self.vehicleSeat.SteerFloat = moveVector.X
-				
-				return moveVector, true
-			else
-				-- This is the path following mode
-				local localMoveVector = self.vehicleSeat.Occupant.RootPart.CFrame:VectorToObjectSpace(moveVector)
-				
-				self.vehicleSeat.ThrottleFloat = self:ComputeThrottle(localMoveVector)
-				self.vehicleSeat.SteerFloat = self:ComputeSteer(localMoveVector)
-				
-				return Vector3.zero, true
-			end
-		end
-		return moveVector, false
-	end
-	
-	function VehicleController:ComputeThrottle(localMoveVector)
-		if localMoveVector ~= Vector3.zero then
-			local throttle = -localMoveVector.Z
-			return throttle
-		else
-			return 0.0
-		end
-	end
-	
-	function VehicleController:ComputeSteer(localMoveVector)
-		if localMoveVector ~= Vector3.zero then
-			local steerAngle = -math.atan2(-localMoveVector.x, -localMoveVector.z) * (180 / math.pi)
-			return steerAngle / self.autoPilot.MaxSteeringAngle
-		else
-			return 0.0
-		end
-	end
-	
-	function VehicleController:SetupAutoPilot()
-		-- Setup default
-		self.autoPilot.MaxSpeed = self.vehicleSeat.MaxSpeed
-		self.autoPilot.MaxSteeringAngle = AUTO_PILOT_DEFAULT_MAX_STEERING_ANGLE
-		
-		-- VehicleSeat should have a MaxSteeringAngle as well.
-		-- Or we could look for a child "AutoPilotConfigModule" to find these values
-		-- Or allow developer to set them through the API as like the CLickToMove customization API
-	end
-	
-end
-
-
 local ControlModule = {} do
 	ControlModule.__index = ControlModule
 	
@@ -8601,7 +7849,7 @@ local ControlModule = {} do
 	
 	local FFlagUserHideControlsWhenMenuOpen = getFastFlag("UserHideControlsWhenMenuOpen")
 	
-	-- ClickToMove, VehicleController controllers handle only walk/run movement, jumping is handled by the
+	-- ClickToMove controller handle only walk/run movement, jumping is handled by the
 	-- TouchJump controller if any of these are active
 	
 	local CONTROL_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
@@ -8661,10 +7909,6 @@ local ControlModule = {} do
 		self.lastInputType = Enum.UserInputType.None
 		self.controlsEnabled = true
 		
-		-- For Roblox self.vehicleController
-		self.humanoidSeatedConn = nil
-		self.vehicleController = nil
-		
 		self.touchControlFrame = nil
 		
 		if FFlagUserHideControlsWhenMenuOpen then
@@ -8680,8 +7924,6 @@ local ControlModule = {} do
 				end
 			end)
 		end
-		
-		self.vehicleController = VehicleController.new(CONTROL_ACTION_PRIORITY)
 		
 		localPlayer.CharacterAdded:Connect(function(char) self:OnCharacterAdded(char) end)
 		localPlayer.CharacterRemoving:Connect(function(char) self:OnCharacterRemoving(char) end)
@@ -8949,44 +8191,14 @@ local ControlModule = {} do
 				end
 			end
 			
-			-- Are we driving a vehicle ?
-			local vehicleConsumedInput = false
-			if self.vehicleController then
-				moveVector, vehicleConsumedInput = self.vehicleController:Update(
-					moveVector,
-					cameraRelative,
-					self.activeControlModule == Gamepad
-				)
-			end
-			
-			-- If not, move the player
-			-- Verification of vehicleConsumedInput is commented out to preserve legacy behavior,
-			-- in case some game relies on Humanoid.MoveDirection still being set while in a VehicleSeat
-			--if not vehicleConsumedInput then
 			if cameraRelative then
 				moveVector = calculateRawMoveVector(self.humanoid, moveVector)
 			end
 			self.moveFunction(localPlayer, moveVector, false)
-			--end
 			
 			-- And make them jump if needed
 			self.humanoid.Jump = self.activeController:GetIsJumping()
 				or (self.touchJumpController and self.touchJumpController:GetIsJumping())
-		end
-	end
-	
-	function ControlModule:OnHumanoidSeated(active: boolean, currentSeatPart: BasePart)
-		if active then
-			if currentSeatPart and currentSeatPart:IsA("VehicleSeat") then
-				if not self.vehicleController then
-					self.vehicleController = self.vehicleController.new(CONTROL_ACTION_PRIORITY)
-				end
-				self.vehicleController:Enable(true, currentSeatPart)
-			end
-		else
-			if self.vehicleController then
-				self.vehicleController:Enable(false, currentSeatPart)
-			end
 		end
 	end
 	
@@ -8998,14 +8210,6 @@ local ControlModule = {} do
 		end
 		
 		self:UpdateTouchGuiVisibility()
-		
-		if self.humanoidSeatedConn then
-			self.humanoidSeatedConn:Disconnect()
-			self.humanoidSeatedConn = nil
-		end
-		self.humanoidSeatedConn = self.humanoid.Seated:Connect(function(active, currentSeatPart)
-			self:OnHumanoidSeated(active, currentSeatPart)
-		end)
 	end
 	
 	function ControlModule:OnCharacterRemoving(char)
