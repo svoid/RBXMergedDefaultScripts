@@ -11,6 +11,18 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
 
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+local VRService = game:GetService("VRService")
+local StarterGui = game:GetService("StarterGui")
+
+local TweenService = game:GetService("TweenService")
+local UserGameSettings = userSettings:GetService("UserGameSettings")
+local Lighting = game:GetService("Lighting")
+local PathfindingService = game:GetService("PathfindingService")
+local CollectionService = game:GetService("CollectionService")
+local DebrisService = game:GetService('Debris')
+
 local localPlayer = Players.LocalPlayer
 
 local CameraUtils = {} do
@@ -18,8 +30,6 @@ local CameraUtils = {} do
 		CameraUtils - Math utility functions shared by multiple camera scripts
 		2018 Camera Update - AllYourBlox
 	--]]
-	
-	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	-- Critically damped spring class for fluid motion effects
 	local Spring = {} do
@@ -775,14 +785,7 @@ local ZoomController = {} do
 end
 
 
-
-
-
 local CameraInput = {} do
-	local RunService = game:GetService("RunService")
-	local UserGameSettings = userSettings:GetService("UserGameSettings")
-	local VRService = game:GetService("VRService")
-	local StarterGui = game:GetService("StarterGui")
 	
 	local CAMERA_INPUT_PRIORITY = Enum.ContextActionPriority.Default.Value
 	local MB_TAP_LENGTH = 0.3 -- (s) length of time for a short mouse button tap to be registered
@@ -1213,7 +1216,6 @@ local CameraInput = {} do
 					table.insert(connectionList, UserInputService.InputEnded:Connect(inputEnded))
 					table.insert(connectionList, UserInputService.PointerAction:Connect(pointerAction))
 					if FFlagUserResetTouchStateOnMenuOpen then
-						local GuiService = game:GetService("GuiService")
 						table.insert(connectionList, GuiService.MenuOpened:connect(resetTouchState))
 					end
 					
@@ -1331,9 +1333,6 @@ local CameraInput = {} do
 end
 
 local CameraUI: any = {} do
-	
-	local TweenService = game:GetService("TweenService")
-	local StarterGui = game:GetService("StarterGui")
 	
 	local FFlagUserEnableCameraToggleNotification = getFastFlag("UserEnableCameraToggleNotification")
 	
@@ -1544,7 +1543,6 @@ end
 
 
 local CameraToggleStateController do
-	local GameSettings = userSettings:GetService("UserGameSettings")
 	
 	local Input = CameraInput
 	
@@ -1660,11 +1658,6 @@ local BaseCamera = {} do
 	
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
 	local FIRST_PERSON_DISTANCE_MIN = 0.5
-	
-	--[[ Roblox Services ]]--
-	local StarterGui = game:GetService("StarterGui")
-	local VRService = game:GetService("VRService")
-	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	function BaseCamera.new()
 		local self = setmetatable({}, BaseCamera)
@@ -2493,9 +2486,6 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 	local INITIAL_CAMERA_ANGLE = CFrame.fromOrientation(math.rad(-15), 0, 0)
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
 	local FIRST_PERSON_DISTANCE_MIN = 0.5
-	
-	--[[ Services ]]--
-	local VRService = game:GetService("VRService")
 	
 	function ClassicCamera.new()
 		local self = setmetatable(BaseCamera.new(), ClassicCamera)
@@ -3610,9 +3600,6 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 	externalProperties["CCWAzimuthTravel"] = 90	-- How many degrees the camera is allowed to rotate from the reference position, CCW as seen from above
 	externalProperties["UseAzimuthLimits"] = false -- Full rotation around Y axis available by default
 	
-	--[[ Services ]]--
-	local VRService = game:GetService("VRService")
-	
 	
 	function OrbitalCamera.new()
 		local self = setmetatable(BaseCamera.new(), OrbitalCamera)
@@ -4180,13 +4167,6 @@ local VRBaseCamera = setmetatable({}, BaseCamera) do
 	local VR_SCREEN_EGDE_BLEND_TIME = 0.14
 	local VR_SEAT_OFFSET = Vector3.new(0,4,0)
 	
-	local VRService = game:GetService("VRService")
-	
-	local Lighting = game:GetService("Lighting")
-	local RunService = game:GetService("RunService")
-	
-	local UserGameSettings = userSettings:GetService("UserGameSettings")
-	
 	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
 	
 	function VRBaseCamera.new()
@@ -4512,10 +4492,6 @@ local VRCamera = setmetatable({}, VRBaseCamera) do
 		VRCamera - Roblox VR camera control module
 		2021 Roblox VR
 	--]]
-	
-	--[[ Services ]]--
-	local VRService = game:GetService("VRService")
-	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	-- Local private variables and constants
 	local CAMERA_BLACKOUT_TIME = 0.1
@@ -5019,8 +4995,6 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	local ZOOM_MINIMUM = 0.5
 	local ZOOM_SENSITIVITY_CURVATURE = 0.5
 	
-	local RunService = game:GetService("RunService")
-	
 	local map = CameraUtils.map
 	local Spring = CameraUtils.Spring
 	local mapClamp = CameraUtils.mapClamp
@@ -5237,9 +5211,6 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	local DEFAULT_CAMERA_DIST = 16
 	local TP_FOLLOW_DIST = 200
 	local TP_FOLLOW_ANGLE_DOT = 0.56
-	
-	local RunService = game:GetService("RunService")
-	local VRService = game:GetService("VRService")
 	
 	local Spring = CameraUtils.Spring
 	local mapClamp = CameraUtils.mapClamp
@@ -5474,10 +5445,6 @@ local CameraModule = {} do
 		"TouchMovementMode",
 	}
 
-	--[[ Roblox Services ]]--
-	local RunService = game:GetService("RunService")
-	local VRService = game:GetService("VRService")
-	local UserGameSettings = userSettings:GetService("UserGameSettings")
 
 	-- Table of camera controllers that have been instantiated. They are instantiated as they are used.
 	local instantiatedCameraControllers = {}
@@ -6059,9 +6026,6 @@ local ClickToMoveDisplay = {} do
 	local TRAIL_DOT_MIN_DISTANCE = 10
 	local TRAIL_DOT_MAX_SCALE = 2.5
 	local TRAIL_DOT_MAX_DISTANCE = 100
-	
-	local TweenService = game:GetService("TweenService")
-	local RunService = game:GetService("RunService")
 	
 	local function CreateWaypointTemplates()
 		local TrailDotTemplate = Instance.new("Part")
@@ -6808,8 +6772,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			return r
 		end
 		
-		local PathfindingService = game:GetService("PathfindingService")
-		
 		function Pather.new(endPoint, surfaceNormal, overrideUseDirectPath: boolean?)
 			local self = setmetatable({}, Pather)
 			
@@ -7320,8 +7282,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			return self.CurrentIgnoreList
 		end
 		
-		local CollectionService = game:GetService("CollectionService")
-		
 		function PatherHandler:UpdateIgnoreTag(newIgnoreTag)
 			if newIgnoreTag == self.CurrentIgnoreTag then
 				return
@@ -7447,8 +7407,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 			local humanoid = findPlayerHumanoid(localPlayer)
 			return humanoid and humanoid.Health > 0
 		end
-		
-		local StarterGui = game:GetService("StarterGui")
 		
 		function PatherHandler:OnTap(tapPositions: {Vector3}, goToPoint: Vector3?, wasTouchTap: boolean?)
 			-- Good to remember if this is the latest tap event
@@ -7583,8 +7541,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		self.fingerTouches[input] = nil
 	end
 	
-	local GuiService = game:GetService("GuiService")
-	
 	function ClickToMove:OnCharacterAdded(character)
 		self:DisconnectEvents()
 		
@@ -7645,8 +7601,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 		self.menuOpenedConnection = GuiService.MenuOpened:Connect(function()
 			patherHandler:CleanupPath()
 		end)
-		
-		local DebrisService = game:GetService('Debris')
 		
 		local function OnCharacterChildAdded(child)
 			if UserInputService.TouchEnabled then
@@ -7940,10 +7894,6 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	local FADE_IN_OUT_HALF_DURATION_DEFAULT = 0.3
 	local FADE_IN_OUT_BALANCE_DEFAULT = 0.5
 	local ThumbstickFadeTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-	
-	local GuiService = game:GetService("GuiService")
-	local RunService = game:GetService("RunService")
-	local TweenService = game:GetService("TweenService")
 	
 	function DynamicThumbstick.new()
 		local self = setmetatable(BaseCharacterController.new() :: any, DynamicThumbstick)
@@ -8795,8 +8745,6 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 		// Description: Implements jump controls for touch devices. Use with Thumbstick and Thumbpad
 	--]]
 	
-	local GuiService = game:GetService("GuiService")
-	
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
 		
 	function TouchJump.new()
@@ -8989,7 +8937,6 @@ end
 local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 	TouchThumbstick.__index = TouchThumbstick
 	
-	local GuiService = game:GetService("GuiService")
 	--[[ Constants ]]--
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
 	
@@ -9170,11 +9117,6 @@ end
 
 local VRNavigation = setmetatable({}, BaseCharacterController) do
 	VRNavigation.__index = VRNavigation
-	
-	local VRService = game:GetService("VRService")
-	local RunService = game:GetService("RunService")
-	local PathfindingService = game:GetService("PathfindingService")
-	local StarterGui = game:GetService("StarterGui")
 	
 	--[[ Constants ]]--
 	local RECALCULATE_PATH_THRESHOLD = 4
@@ -9824,12 +9766,6 @@ local ControlModule = {} do
 
 		2018 PlayerScripts Update - AllYourBlox
 	--]]
-	
-	--[[ Roblox Services ]]--
-	local RunService = game:GetService("RunService")
-	local GuiService = game:GetService("GuiService")
-	local UserGameSettings = userSettings:GetService("UserGameSettings")
-	local VRService = game:GetService("VRService")
 	
 	-- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
 	-- Keyboard, Gamepad, DynamicThumbstick, TouchThumbstick
