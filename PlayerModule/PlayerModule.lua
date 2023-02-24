@@ -6184,12 +6184,6 @@ local CameraModule = {} do
 
 end
 
-local cameraModuleObject = CameraModule.new()
-
-
-
-
-
 
 
 
@@ -10628,7 +10622,7 @@ local PlayerModule = {} do
 
 	function PlayerModule.new()
 		local self = setmetatable({},PlayerModule)
-		self.cameras = {}
+		self.cameras = CameraModule.new()
 		self.controls = ControlModule.new()
 		return self
 	end
