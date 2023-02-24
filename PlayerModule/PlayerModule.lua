@@ -2544,6 +2544,10 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		return self
 	end
 	
+	function ClassicCamera:GetModuleName()
+		return "ClassicCamera"
+	end
+	
 	function ClassicCamera:GetCameraToggleOffset(dt: number)
 		if self.isCameraToggle then
 			local zoom = self.currentSubjectDistance
