@@ -2505,293 +2505,6 @@ local BaseOcclusion: any = {} do
 end
 
 
-local ClassicCamera = setmetatable({}, BaseCamera) do
-	ClassicCamera.__index = ClassicCamera
-	
-	--[[
-		ClassicCamera - Classic Roblox camera control module
-		2018 Camera Update - AllYourBlox
-
-		Note: This module also handles camera control types Follow and Track, the
-		latter of which is currently not distinguished from Classic
-	--]]
-	
-	-- Local private variables and constants
-	local tweenAcceleration = math.rad(220) -- Radians/Second^2
-	local tweenSpeed = math.rad(0)          -- Radians/Second
-	local tweenMaxSpeed = math.rad(250)     -- Radians/Second
-	local TIME_BEFORE_AUTO_ROTATE = 2       -- Seconds, used when auto-aligning camera with vehicles
-	
-	local INITIAL_CAMERA_ANGLE = CFrame.fromOrientation(math.rad(-15), 0, 0)
-	local ZOOM_SENSITIVITY_CURVATURE = 0.5
-	local FIRST_PERSON_DISTANCE_MIN = 0.5
-	
-	function ClassicCamera.new()
-		local self = setmetatable(BaseCamera.new(), ClassicCamera)
-		
-		self.isFollowCamera = false
-		self.isCameraToggle = false
-		self.lastUpdate = tick()
-		self.cameraToggleSpring = CameraUtils.Spring.new(5, 0)
-		
-		return self
-	end
-	
-	function ClassicCamera:GetModuleName()
-		return "ClassicCamera"
-	end
-	
-	function ClassicCamera:GetCameraToggleOffset(dt: number)
-		if self.isCameraToggle then
-			local zoom = self.currentSubjectDistance
-			
-			if CameraInput.getTogglePan() then
-				self.cameraToggleSpring.goal = math.clamp(
-					CameraUtils.map(zoom, 0.5, self.FIRST_PERSON_DISTANCE_THRESHOLD, 0, 1),
-					0,
-					1
-				)
-			else
-				self.cameraToggleSpring.goal = 0
-			end
-			
-			local distanceOffset: number = math.clamp(
-				CameraUtils.map(zoom, 0.5, 64, 0, 1),
-				0,
-				1
-			) + 1
-			
-			return Vector3.new(
-				0,
-				self.cameraToggleSpring:step(dt) * distanceOffset,
-				0
-			)
-		end
-		
-		return Vector3.zero
-	end
-	
-	-- Movement mode standardized to Enum.ComputerCameraMovementMode values
-	function ClassicCamera:SetCameraMovementMode(cameraMovementMode: Enum.ComputerCameraMovementMode)
-		BaseCamera.SetCameraMovementMode(self, cameraMovementMode)
-		
-		self.isFollowCamera = cameraMovementMode == Enum.ComputerCameraMovementMode.Follow
-		self.isCameraToggle = cameraMovementMode == Enum.ComputerCameraMovementMode.CameraToggle
-	end
-	
-	function ClassicCamera:Update()
-		local now = tick()
-		local timeDelta = now - self.lastUpdate
-		
-		local camera = workspace.CurrentCamera
-		local newCameraCFrame = camera.CFrame
-		local newCameraFocus = camera.Focus
-		
-		local overrideCameraLookVector = nil
-		if self.resetCameraAngle then
-			local rootPart: BasePart = self:GetHumanoidRootPart()
-			if rootPart then
-				overrideCameraLookVector = (rootPart.CFrame * INITIAL_CAMERA_ANGLE).lookVector
-			else
-				overrideCameraLookVector = INITIAL_CAMERA_ANGLE.lookVector
-			end
-			self.resetCameraAngle = false
-		end
-		
-		local humanoid = self:GetHumanoid()
-		local cameraSubject = camera.CameraSubject
-		local isInVehicle = cameraSubject and cameraSubject:IsA("VehicleSeat")
-		local isOnASkateboard = cameraSubject and cameraSubject:IsA("SkateboardPlatform")
-		local isClimbing = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Climbing
-		
-		if self.lastUpdate == nil or timeDelta > 1 then
-			self.lastCameraTransform = nil
-		end
-		
-		local rotateInput = CameraInput.getRotation()
-		
-		self:StepZoom()
-		
-		local cameraHeight = self:GetCameraHeight()
-		
-		-- Reset tween speed if user is panning
-		if CameraInput.getRotation() ~= Vector2.new() then
-			tweenSpeed = 0
-			self.lastUserPanCamera = tick()
-		end
-		
-		local userRecentlyPannedCamera = now - self.lastUserPanCamera < TIME_BEFORE_AUTO_ROTATE
-		local subjectPosition: Vector3 = self:GetSubjectPosition()
-		
-		if subjectPosition and camera then
-			local zoom = self:GetCameraToSubjectDistance()
-			if zoom < 0.5 then
-				zoom = 0.5
-			end
-			
-			if self:GetIsMouseLocked() and not self:IsInFirstPerson() then
-				-- We need to use the right vector of the camera after rotation, not before
-				local newLookCFrame: CFrame = self:CalculateNewLookCFrameFromArg(overrideCameraLookVector, rotateInput)
-				
-				local offset: Vector3 = self:GetMouseLockOffset()
-				local cameraRelativeOffset: Vector3 = offset.X * newLookCFrame.RightVector + offset.Y * newLookCFrame.UpVector + offset.Z * newLookCFrame.LookVector
-				
-				--offset can be NAN, NAN, NAN if newLookVector has only y component
-				if CameraUtils.IsFiniteVector3(cameraRelativeOffset) then
-					subjectPosition = subjectPosition + cameraRelativeOffset
-				end
-			else
-				local userPanningTheCamera = CameraInput.getRotation() ~= Vector2.new()
-				
-				if not userPanningTheCamera and self.lastCameraTransform then
-					
-					local isInFirstPerson = self:IsInFirstPerson()
-					
-					if (isInVehicle or isOnASkateboard or (self.isFollowCamera and isClimbing))
-					and self.lastUpdate
-					and humanoid
-					and humanoid.Torso then
-						
-						if isInFirstPerson then
-							if self.lastSubjectCFrame
-							and (isInVehicle or isOnASkateboard)
-							and cameraSubject:IsA("BasePart") then
-								
-								local y = -CameraUtils.GetAngleBetweenXZVectors(self.lastSubjectCFrame.lookVector, cameraSubject.CFrame.lookVector)
-								if CameraUtils.IsFinite(y) then
-									rotateInput += Vector2.new(y, 0)
-								end
-								
-								tweenSpeed = 0
-							end
-						elseif not userRecentlyPannedCamera then
-							local forwardVector = humanoid.Torso.CFrame.lookVector
-							
-							tweenSpeed = math.clamp(
-								tweenSpeed + tweenAcceleration * timeDelta,
-								0,
-								tweenMaxSpeed
-							)
-							
-							local percent = math.clamp(tweenSpeed * timeDelta, 0, 1)
-							
-							if self:IsInFirstPerson() and not (self.isFollowCamera and self.isClimbing) then
-								percent = 1
-							end
-							
-							local y = CameraUtils.GetAngleBetweenXZVectors(forwardVector, self:GetCameraLookVector())
-							if CameraUtils.IsFinite(y) and math.abs(y) > 0.0001 then
-								rotateInput += Vector2.new(y * percent, 0)
-							end
-						end
-						
-					elseif self.isFollowCamera and (not (isInFirstPerson or userRecentlyPannedCamera) and not VRService.VREnabled) then
-						-- Logic that was unique to the old FollowCamera module
-						local lastVec = -(self.lastCameraTransform.p - subjectPosition)
-						
-						local y = CameraUtils.GetAngleBetweenXZVectors(lastVec, self:GetCameraLookVector())
-						
-						-- This cutoff is to decide if the humanoid's angle of movement,
-						-- relative to the camera's look vector, is enough that
-						-- we want the camera to be following them. The point is to provide
-						-- a sizable dead zone to allow more precise forward movements.
-						local thetaCutoff = 0.4
-						
-						-- Check for NaNs
-						if CameraUtils.IsFinite(y)
-						and math.abs(y) > 0.0001
-						and math.abs(y) > thetaCutoff * timeDelta then
-							rotateInput += Vector2.new(y, 0)
-						end
-					end
-				end
-			end
-			
-			if not self.isFollowCamera then
-				local VREnabled = VRService.VREnabled
-				
-				if VREnabled then
-					newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
-				else
-					newCameraFocus = CFrame.new(subjectPosition)
-				end
-				
-				local cameraFocusP = newCameraFocus.p
-				if VREnabled and not self:IsInFirstPerson() then
-					local vecToSubject = (subjectPosition - camera.CFrame.p)
-					local distToSubject = vecToSubject.magnitude
-					
-					local flaggedRotateInput = rotateInput
-					
-					-- Only move the camera if it exceeded a maximum distance to the subject in VR
-					if distToSubject > zoom or flaggedRotateInput.x ~= 0 then
-						local desiredDist = math.min(distToSubject, zoom)
-						vecToSubject = self:CalculateNewLookVectorFromArg(nil, rotateInput) * desiredDist
-						local newPos = cameraFocusP - vecToSubject
-						local desiredLookDir = camera.CFrame.lookVector
-						
-						if flaggedRotateInput.x ~= 0 then
-							desiredLookDir = vecToSubject
-						end
-						
-						local lookAt = Vector3.new(
-							newPos.x + desiredLookDir.x,
-							newPos.y,
-							newPos.z + desiredLookDir.z
-						)
-						
-						newCameraCFrame = CFrame.new(newPos, lookAt) + Vector3.new(0, cameraHeight, 0)
-					end
-				else
-					local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
-					newCameraCFrame = CFrame.new(cameraFocusP - (zoom * newLookVector), cameraFocusP)
-				end
-			else -- is FollowCamera
-				local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
-				
-				if VRService.VREnabled then
-					newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
-				else
-					newCameraFocus = CFrame.new(subjectPosition)
-				end
-				
-				newCameraCFrame = CFrame.new(
-					newCameraFocus.p - (zoom * newLookVector),
-					newCameraFocus.p
-				) + Vector3.new(0, cameraHeight, 0)
-			end
-			
-			local toggleOffset = self:GetCameraToggleOffset(timeDelta)
-			newCameraFocus += toggleOffset
-			newCameraCFrame += toggleOffset
-			
-			self.lastCameraTransform = newCameraCFrame
-			self.lastCameraFocus = newCameraFocus
-			
-			if (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
-				self.lastSubjectCFrame = cameraSubject.CFrame
-			else
-				self.lastSubjectCFrame = nil
-			end
-		end
-		
-		self.lastUpdate = now
-		return newCameraCFrame, newCameraFocus
-	end
-	
-	function ClassicCamera:EnterFirstPerson()
-		self.inFirstPerson = true
-		self:UpdateMouseBehavior()
-	end
-	
-	function ClassicCamera:LeaveFirstPerson()
-		self.inFirstPerson = false
-		self:UpdateMouseBehavior()
-	end
-	
-end
-
-
 local Invisicam = setmetatable({}, BaseOcclusion) do
 	Invisicam.__index = Invisicam
 	
@@ -3366,6 +3079,404 @@ local Invisicam = setmetatable({}, BaseOcclusion) do
 	
 end
 
+local Poppercam = setmetatable({}, BaseOcclusion) do
+	Poppercam.__index = Poppercam
+	
+	--[[
+		Poppercam - Occlusion module that brings the camera closer to the subject when objects are blocking the view.
+	--]]
+	
+	local TransformExtrapolator = {} do
+		TransformExtrapolator.__index = TransformExtrapolator
+		
+		local CF_IDENTITY = CFrame.new()
+		
+		local function cframeToAxis(cframe: CFrame): Vector3
+			local axis: Vector3, angle: number = cframe:ToAxisAngle()
+			return axis*angle
+		end
+		
+		local function axisToCFrame(axis: Vector3): CFrame
+			local angle: number = axis.Magnitude
+			if angle > 1e-5 then
+				return CFrame.fromAxisAngle(axis, angle)
+			end
+			return CF_IDENTITY
+		end
+		
+		local function extractRotation(cf: CFrame): CFrame
+			local _, _, _, xx, yx, zx, xy, yy, zy, xz, yz, zz = cf:GetComponents()
+			return CFrame.new(0, 0, 0, xx, yx, zx, xy, yy, zy, xz, yz, zz)
+		end
+		
+		function TransformExtrapolator.new()
+			return setmetatable({
+				lastCFrame = nil,
+			}, TransformExtrapolator)
+		end
+		
+		function TransformExtrapolator:Step(dt: number, currentCFrame: CFrame)
+			local lastCFrame = self.lastCFrame or currentCFrame
+			self.lastCFrame = currentCFrame
+			
+			local currentPos = currentCFrame.Position
+			local currentRot = extractRotation(currentCFrame)
+			
+			local lastPos = lastCFrame.p
+			local lastRot = extractRotation(lastCFrame)
+			
+			-- Estimate velocities from the delta between now and the last frame
+			-- This estimation can be a little noisy.
+			local dp = (currentPos - lastPos)/dt
+			local dr = cframeToAxis(currentRot*lastRot:inverse())/dt
+			
+			local function extrapolate(t)
+				local p = dp*t + currentPos
+				local r = axisToCFrame(dr*t)*currentRot
+				return r + p
+			end
+			
+			return {
+				extrapolate = extrapolate,
+				posVelocity = dp,
+				rotVelocity = dr,
+			}
+		end
+		
+		function TransformExtrapolator:Reset()
+			self.lastCFrame = nil
+		end
+	end
+	
+	function Poppercam.new()
+		local self = setmetatable(BaseOcclusion.new(), Poppercam)
+		self.focusExtrapolator = TransformExtrapolator.new()
+		return self
+	end
+	
+	function Poppercam:GetOcclusionMode()
+		return Enum.DevCameraOcclusionMode.Zoom
+	end
+	
+	function Poppercam:Enable(enable)
+		self.focusExtrapolator:Reset()
+	end
+	
+	function Poppercam:Update(renderDt, desiredCameraCFrame, desiredCameraFocus, cameraController)
+		local rotatedFocus = CFrame.new(desiredCameraFocus.p, desiredCameraCFrame.p)
+			* CFrame.new(
+				0, 0, 0,
+				-1, 0, 0,
+				0, 1, 0,
+				0, 0, -1
+			)
+		
+		local extrapolation = self.focusExtrapolator:Step(renderDt, rotatedFocus)
+		local zoom = ZoomController.Update(renderDt, rotatedFocus, extrapolation)
+		
+		return rotatedFocus * CFrame.new(0, 0, zoom), desiredCameraFocus
+	end
+	
+	-- Called when character is added
+	function Poppercam:CharacterAdded(character, player)
+	end
+	
+	-- Called when character is about to be removed
+	function Poppercam:CharacterRemoving(character, player)
+	end
+	
+	function Poppercam:OnCameraSubjectChanged(newSubject)
+	end
+	
+end
+
+
+local ClassicCamera = setmetatable({}, BaseCamera) do
+	ClassicCamera.__index = ClassicCamera
+	
+	--[[
+		ClassicCamera - Classic Roblox camera control module
+		2018 Camera Update - AllYourBlox
+
+		Note: This module also handles camera control types Follow and Track, the
+		latter of which is currently not distinguished from Classic
+	--]]
+	
+	-- Local private variables and constants
+	local tweenAcceleration = math.rad(220) -- Radians/Second^2
+	local tweenSpeed = math.rad(0)          -- Radians/Second
+	local tweenMaxSpeed = math.rad(250)     -- Radians/Second
+	local TIME_BEFORE_AUTO_ROTATE = 2       -- Seconds, used when auto-aligning camera with vehicles
+	
+	local INITIAL_CAMERA_ANGLE = CFrame.fromOrientation(math.rad(-15), 0, 0)
+	local ZOOM_SENSITIVITY_CURVATURE = 0.5
+	local FIRST_PERSON_DISTANCE_MIN = 0.5
+	
+	function ClassicCamera.new()
+		local self = setmetatable(BaseCamera.new(), ClassicCamera)
+		
+		self.isFollowCamera = false
+		self.isCameraToggle = false
+		self.lastUpdate = tick()
+		self.cameraToggleSpring = CameraUtils.Spring.new(5, 0)
+		
+		return self
+	end
+	
+	function ClassicCamera:GetModuleName()
+		return "ClassicCamera"
+	end
+	
+	function ClassicCamera:GetCameraToggleOffset(dt: number)
+		if self.isCameraToggle then
+			local zoom = self.currentSubjectDistance
+			
+			if CameraInput.getTogglePan() then
+				self.cameraToggleSpring.goal = math.clamp(
+					CameraUtils.map(zoom, 0.5, self.FIRST_PERSON_DISTANCE_THRESHOLD, 0, 1),
+					0,
+					1
+				)
+			else
+				self.cameraToggleSpring.goal = 0
+			end
+			
+			local distanceOffset: number = math.clamp(
+				CameraUtils.map(zoom, 0.5, 64, 0, 1),
+				0,
+				1
+			) + 1
+			
+			return Vector3.new(
+				0,
+				self.cameraToggleSpring:step(dt) * distanceOffset,
+				0
+			)
+		end
+		
+		return Vector3.zero
+	end
+	
+	-- Movement mode standardized to Enum.ComputerCameraMovementMode values
+	function ClassicCamera:SetCameraMovementMode(cameraMovementMode: Enum.ComputerCameraMovementMode)
+		BaseCamera.SetCameraMovementMode(self, cameraMovementMode)
+		
+		self.isFollowCamera = cameraMovementMode == Enum.ComputerCameraMovementMode.Follow
+		self.isCameraToggle = cameraMovementMode == Enum.ComputerCameraMovementMode.CameraToggle
+	end
+	
+	function ClassicCamera:Update()
+		local now = tick()
+		local timeDelta = now - self.lastUpdate
+		
+		local camera = workspace.CurrentCamera
+		local newCameraCFrame = camera.CFrame
+		local newCameraFocus = camera.Focus
+		
+		local overrideCameraLookVector = nil
+		if self.resetCameraAngle then
+			local rootPart: BasePart = self:GetHumanoidRootPart()
+			if rootPart then
+				overrideCameraLookVector = (rootPart.CFrame * INITIAL_CAMERA_ANGLE).lookVector
+			else
+				overrideCameraLookVector = INITIAL_CAMERA_ANGLE.lookVector
+			end
+			self.resetCameraAngle = false
+		end
+		
+		local humanoid = self:GetHumanoid()
+		local cameraSubject = camera.CameraSubject
+		local isInVehicle = cameraSubject and cameraSubject:IsA("VehicleSeat")
+		local isOnASkateboard = cameraSubject and cameraSubject:IsA("SkateboardPlatform")
+		local isClimbing = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Climbing
+		
+		if self.lastUpdate == nil or timeDelta > 1 then
+			self.lastCameraTransform = nil
+		end
+		
+		local rotateInput = CameraInput.getRotation()
+		
+		self:StepZoom()
+		
+		local cameraHeight = self:GetCameraHeight()
+		
+		-- Reset tween speed if user is panning
+		if CameraInput.getRotation() ~= Vector2.new() then
+			tweenSpeed = 0
+			self.lastUserPanCamera = tick()
+		end
+		
+		local userRecentlyPannedCamera = now - self.lastUserPanCamera < TIME_BEFORE_AUTO_ROTATE
+		local subjectPosition: Vector3 = self:GetSubjectPosition()
+		
+		if subjectPosition and camera then
+			local zoom = self:GetCameraToSubjectDistance()
+			if zoom < 0.5 then
+				zoom = 0.5
+			end
+			
+			if self:GetIsMouseLocked() and not self:IsInFirstPerson() then
+				-- We need to use the right vector of the camera after rotation, not before
+				local newLookCFrame: CFrame = self:CalculateNewLookCFrameFromArg(overrideCameraLookVector, rotateInput)
+				
+				local offset: Vector3 = self:GetMouseLockOffset()
+				local cameraRelativeOffset: Vector3 = offset.X * newLookCFrame.RightVector + offset.Y * newLookCFrame.UpVector + offset.Z * newLookCFrame.LookVector
+				
+				--offset can be NAN, NAN, NAN if newLookVector has only y component
+				if CameraUtils.IsFiniteVector3(cameraRelativeOffset) then
+					subjectPosition = subjectPosition + cameraRelativeOffset
+				end
+			else
+				local userPanningTheCamera = CameraInput.getRotation() ~= Vector2.new()
+				
+				if not userPanningTheCamera and self.lastCameraTransform then
+					
+					local isInFirstPerson = self:IsInFirstPerson()
+					
+					if (isInVehicle or isOnASkateboard or (self.isFollowCamera and isClimbing))
+					and self.lastUpdate
+					and humanoid
+					and humanoid.Torso then
+						
+						if isInFirstPerson then
+							if self.lastSubjectCFrame
+							and (isInVehicle or isOnASkateboard)
+							and cameraSubject:IsA("BasePart") then
+								
+								local y = -CameraUtils.GetAngleBetweenXZVectors(self.lastSubjectCFrame.lookVector, cameraSubject.CFrame.lookVector)
+								if CameraUtils.IsFinite(y) then
+									rotateInput += Vector2.new(y, 0)
+								end
+								
+								tweenSpeed = 0
+							end
+						elseif not userRecentlyPannedCamera then
+							local forwardVector = humanoid.Torso.CFrame.lookVector
+							
+							tweenSpeed = math.clamp(
+								tweenSpeed + tweenAcceleration * timeDelta,
+								0,
+								tweenMaxSpeed
+							)
+							
+							local percent = math.clamp(tweenSpeed * timeDelta, 0, 1)
+							
+							if self:IsInFirstPerson() and not (self.isFollowCamera and self.isClimbing) then
+								percent = 1
+							end
+							
+							local y = CameraUtils.GetAngleBetweenXZVectors(forwardVector, self:GetCameraLookVector())
+							if CameraUtils.IsFinite(y) and math.abs(y) > 0.0001 then
+								rotateInput += Vector2.new(y * percent, 0)
+							end
+						end
+						
+					elseif self.isFollowCamera and (not (isInFirstPerson or userRecentlyPannedCamera) and not VRService.VREnabled) then
+						-- Logic that was unique to the old FollowCamera module
+						local lastVec = -(self.lastCameraTransform.p - subjectPosition)
+						
+						local y = CameraUtils.GetAngleBetweenXZVectors(lastVec, self:GetCameraLookVector())
+						
+						-- This cutoff is to decide if the humanoid's angle of movement,
+						-- relative to the camera's look vector, is enough that
+						-- we want the camera to be following them. The point is to provide
+						-- a sizable dead zone to allow more precise forward movements.
+						local thetaCutoff = 0.4
+						
+						-- Check for NaNs
+						if CameraUtils.IsFinite(y)
+						and math.abs(y) > 0.0001
+						and math.abs(y) > thetaCutoff * timeDelta then
+							rotateInput += Vector2.new(y, 0)
+						end
+					end
+				end
+			end
+			
+			if not self.isFollowCamera then
+				local VREnabled = VRService.VREnabled
+				
+				if VREnabled then
+					newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
+				else
+					newCameraFocus = CFrame.new(subjectPosition)
+				end
+				
+				local cameraFocusP = newCameraFocus.p
+				if VREnabled and not self:IsInFirstPerson() then
+					local vecToSubject = (subjectPosition - camera.CFrame.p)
+					local distToSubject = vecToSubject.magnitude
+					
+					local flaggedRotateInput = rotateInput
+					
+					-- Only move the camera if it exceeded a maximum distance to the subject in VR
+					if distToSubject > zoom or flaggedRotateInput.x ~= 0 then
+						local desiredDist = math.min(distToSubject, zoom)
+						vecToSubject = self:CalculateNewLookVectorFromArg(nil, rotateInput) * desiredDist
+						local newPos = cameraFocusP - vecToSubject
+						local desiredLookDir = camera.CFrame.lookVector
+						
+						if flaggedRotateInput.x ~= 0 then
+							desiredLookDir = vecToSubject
+						end
+						
+						local lookAt = Vector3.new(
+							newPos.x + desiredLookDir.x,
+							newPos.y,
+							newPos.z + desiredLookDir.z
+						)
+						
+						newCameraCFrame = CFrame.new(newPos, lookAt) + Vector3.new(0, cameraHeight, 0)
+					end
+				else
+					local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
+					newCameraCFrame = CFrame.new(cameraFocusP - (zoom * newLookVector), cameraFocusP)
+				end
+			else -- is FollowCamera
+				local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
+				
+				if VRService.VREnabled then
+					newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
+				else
+					newCameraFocus = CFrame.new(subjectPosition)
+				end
+				
+				newCameraCFrame = CFrame.new(
+					newCameraFocus.p - (zoom * newLookVector),
+					newCameraFocus.p
+				) + Vector3.new(0, cameraHeight, 0)
+			end
+			
+			local toggleOffset = self:GetCameraToggleOffset(timeDelta)
+			newCameraFocus += toggleOffset
+			newCameraCFrame += toggleOffset
+			
+			self.lastCameraTransform = newCameraCFrame
+			self.lastCameraFocus = newCameraFocus
+			
+			if (isInVehicle or isOnASkateboard) and cameraSubject:IsA("BasePart") then
+				self.lastSubjectCFrame = cameraSubject.CFrame
+			else
+				self.lastSubjectCFrame = nil
+			end
+		end
+		
+		self.lastUpdate = now
+		return newCameraCFrame, newCameraFocus
+	end
+	
+	function ClassicCamera:EnterFirstPerson()
+		self.inFirstPerson = true
+		self:UpdateMouseBehavior()
+	end
+	
+	function ClassicCamera:LeaveFirstPerson()
+		self.inFirstPerson = false
+		self:UpdateMouseBehavior()
+	end
+	
+end
+
 local LegacyCamera = setmetatable({}, BaseCamera) do
 	LegacyCamera.__index = LegacyCamera
 	
@@ -3484,222 +3595,6 @@ local LegacyCamera = setmetatable({}, BaseCamera) do
 	end
 	
 end
-
-
-local MouseLockController = {} do
-	MouseLockController.__index = MouseLockController
-	
-	--[[
-		MouseLockController - Replacement for ShiftLockController, manages use of mouse-locked mode
-		2018 Camera Update - AllYourBlox
-	--]]
-	
-	--[[ Constants ]]--
-	local DEFAULT_MOUSE_LOCK_CURSOR = "rbxasset://textures/MouseLockedCursor.png"
-	
-	local CONTEXT_ACTION_NAME = "MouseLockSwitchAction"
-	local MOUSELOCK_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
-	
-	--[[ Services ]]--
-	local Settings = userSettings	-- ignore warning
-	local GameSettings = Settings.GameSettings
-	
-	function MouseLockController.new()
-		local self = setmetatable({}, MouseLockController)
-		
-		self.isMouseLocked = false
-		self.savedMouseCursor = nil
-		self.boundKeys = {Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift} -- defaults
-		
-		self.mouseLockToggledEvent = Instance.new("BindableEvent")
-		
-		local boundKeysObj = script:FindFirstChild("BoundKeys")
-		if (not boundKeysObj) or (not boundKeysObj:IsA("StringValue")) then
-			-- If object with correct name was found, but it's not a StringValue, destroy and replace
-			if boundKeysObj then
-				boundKeysObj:Destroy()
-			end
-			
-			boundKeysObj = Instance.new("StringValue")
-			-- Luau FIXME: should be able to infer from assignment above that boundKeysObj is not nil
-			assert(boundKeysObj, "")
-			boundKeysObj.Name = "BoundKeys"
-			boundKeysObj.Value = "LeftShift,RightShift"
-			boundKeysObj.Parent = script
-		end
-		
-		if boundKeysObj then
-			boundKeysObj.Changed:Connect(function(value)
-				self:OnBoundKeysObjectChanged(value)
-			end)
-			self:OnBoundKeysObjectChanged(boundKeysObj.Value) -- Initial setup call
-		end
-		
-		-- Watch for changes to user's ControlMode and ComputerMovementMode settings and update the feature availability accordingly
-		GameSettings.Changed:Connect(function(property)
-			if property == "ControlMode" or property == "ComputerMovementMode" then
-				self:UpdateMouseLockAvailability()
-			end
-		end)
-		
-		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		localPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
-			self:UpdateMouseLockAvailability()
-		end)
-		
-		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		localPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
-			self:UpdateMouseLockAvailability()
-		end)
-		
-		self:UpdateMouseLockAvailability()
-		
-		return self
-	end
-	
-	function MouseLockController:GetIsMouseLocked()
-		return self.isMouseLocked
-	end
-	
-	function MouseLockController:GetBindableToggleEvent()
-		return self.mouseLockToggledEvent.Event
-	end
-	
-	function MouseLockController:GetMouseLockOffset()
-		local offsetValueObj: Vector3Value = script:FindFirstChild("CameraOffset") :: Vector3Value
-		if offsetValueObj and offsetValueObj:IsA("Vector3Value") then
-			return offsetValueObj.Value
-		else
-			-- If CameraOffset object was found but not correct type, destroy
-			if offsetValueObj then
-				offsetValueObj:Destroy()
-			end
-			offsetValueObj = Instance.new("Vector3Value")
-			assert(offsetValueObj, "")
-			offsetValueObj.Name = "CameraOffset"
-			offsetValueObj.Value = Vector3.new(1.75, 0, 0) -- Legacy Default Value
-			offsetValueObj.Parent = script
-		end
-		
-		if offsetValueObj and offsetValueObj.Value then
-			return offsetValueObj.Value
-		end
-		
-		return Vector3.new(1.75,0,0)
-	end
-	
-	function MouseLockController:UpdateMouseLockAvailability()
-		local devAllowsMouseLock = localPlayer.DevEnableMouseLock
-		local devMovementModeIsScriptable = localPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
-		local userHasMouseLockModeEnabled = GameSettings.ControlMode == Enum.ControlMode.MouseLockSwitch
-		local userHasClickToMoveEnabled =  GameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove
-		local MouseLockAvailable = devAllowsMouseLock
-			and userHasMouseLockModeEnabled
-			and not userHasClickToMoveEnabled
-			and not devMovementModeIsScriptable
-		
-		if MouseLockAvailable~=self.enabled then
-			self:EnableMouseLock(MouseLockAvailable)
-		end
-	end
-	
-	function MouseLockController:OnBoundKeysObjectChanged(newValue: string)
-		-- Overriding defaults, note: possibly with nothing at
-		-- all if boundKeysObj.Value is "" or contains invalid values
-		self.boundKeys = {}
-		
-		for token in string.gmatch(newValue,"[^%s,]+") do
-			for _, keyEnum in pairs(Enum.KeyCode:GetEnumItems()) do
-				if token == keyEnum.Name then
-					table.insert(self.boundKeys, keyEnum)
-					break
-				end
-			end
-		end
-		
-		self:UnbindContextActions()
-		self:BindContextActions()
-	end
-	
-	--[[ Local Functions ]]--
-	function MouseLockController:OnMouseLockToggled()
-		self.isMouseLocked = not self.isMouseLocked
-		
-		if self.isMouseLocked then
-			local cursorImageValueObj: StringValue? = script:FindFirstChild("CursorImage") :: StringValue?
-			if cursorImageValueObj and cursorImageValueObj:IsA("StringValue") and cursorImageValueObj.Value then
-				CameraUtils.setMouseIconOverride(cursorImageValueObj.Value)
-			else
-				if cursorImageValueObj then
-					cursorImageValueObj:Destroy()
-				end
-				cursorImageValueObj = Instance.new("StringValue")
-				assert(cursorImageValueObj, "")
-				cursorImageValueObj.Name = "CursorImage"
-				cursorImageValueObj.Value = DEFAULT_MOUSE_LOCK_CURSOR
-				cursorImageValueObj.Parent = script
-				CameraUtils.setMouseIconOverride(DEFAULT_MOUSE_LOCK_CURSOR)
-			end
-		else
-			CameraUtils.restoreMouseIcon()
-		end
-		
-		self.mouseLockToggledEvent:Fire()
-	end
-	
-	function MouseLockController:DoMouseLockSwitch(name, state, input)
-		if state == Enum.UserInputState.Begin then
-			self:OnMouseLockToggled()
-			return Enum.ContextActionResult.Sink
-		end
-		return Enum.ContextActionResult.Pass
-	end
-	
-	function MouseLockController:BindContextActions()
-		local functionToBind = function(name, state, input)
-			return self:DoMouseLockSwitch(name, state, input)
-		end
-		
-		ContextActionService:BindActionAtPriority(CONTEXT_ACTION_NAME,
-			functionToBind, false, MOUSELOCK_ACTION_PRIORITY, unpack(self.boundKeys))
-	end
-	
-	function MouseLockController:UnbindContextActions()
-		ContextActionService:UnbindAction(CONTEXT_ACTION_NAME)
-	end
-	
-	function MouseLockController:IsMouseLocked(): boolean
-		return self.enabled and self.isMouseLocked
-	end
-	
-	function MouseLockController:EnableMouseLock(enable: boolean)
-		if enable ~= self.enabled then
-			
-			self.enabled = enable
-			
-			if self.enabled then
-				-- Enabling the mode
-				self:BindContextActions()
-			else
-				-- Disabling
-				-- Restore mouse cursor
-				CameraUtils.restoreMouseIcon()
-				
-				self:UnbindContextActions()
-				
-				-- If the mode is disabled while being used, fire the event to toggle it off
-				if self.isMouseLocked then
-					self.mouseLockToggledEvent:Fire()
-				end
-				
-				self.isMouseLocked = false
-			end
-			
-		end
-	end
-	
-end
-
 
 local OrbitalCamera = setmetatable({}, BaseCamera) do
 	OrbitalCamera.__index = OrbitalCamera
@@ -4034,968 +3929,6 @@ local OrbitalCamera = setmetatable({}, BaseCamera) do
 		
 		self.lastUpdate = now
 		return newCameraCFrame, newCameraFocus
-	end
-	
-end
-
-
-local Poppercam = setmetatable({}, BaseOcclusion) do
-	Poppercam.__index = Poppercam
-	
-	--[[
-		Poppercam - Occlusion module that brings the camera closer to the subject when objects are blocking the view.
-	--]]
-	
-	local TransformExtrapolator = {} do
-		TransformExtrapolator.__index = TransformExtrapolator
-		
-		local CF_IDENTITY = CFrame.new()
-		
-		local function cframeToAxis(cframe: CFrame): Vector3
-			local axis: Vector3, angle: number = cframe:ToAxisAngle()
-			return axis*angle
-		end
-		
-		local function axisToCFrame(axis: Vector3): CFrame
-			local angle: number = axis.Magnitude
-			if angle > 1e-5 then
-				return CFrame.fromAxisAngle(axis, angle)
-			end
-			return CF_IDENTITY
-		end
-		
-		local function extractRotation(cf: CFrame): CFrame
-			local _, _, _, xx, yx, zx, xy, yy, zy, xz, yz, zz = cf:GetComponents()
-			return CFrame.new(0, 0, 0, xx, yx, zx, xy, yy, zy, xz, yz, zz)
-		end
-		
-		function TransformExtrapolator.new()
-			return setmetatable({
-				lastCFrame = nil,
-			}, TransformExtrapolator)
-		end
-		
-		function TransformExtrapolator:Step(dt: number, currentCFrame: CFrame)
-			local lastCFrame = self.lastCFrame or currentCFrame
-			self.lastCFrame = currentCFrame
-			
-			local currentPos = currentCFrame.Position
-			local currentRot = extractRotation(currentCFrame)
-			
-			local lastPos = lastCFrame.p
-			local lastRot = extractRotation(lastCFrame)
-			
-			-- Estimate velocities from the delta between now and the last frame
-			-- This estimation can be a little noisy.
-			local dp = (currentPos - lastPos)/dt
-			local dr = cframeToAxis(currentRot*lastRot:inverse())/dt
-			
-			local function extrapolate(t)
-				local p = dp*t + currentPos
-				local r = axisToCFrame(dr*t)*currentRot
-				return r + p
-			end
-			
-			return {
-				extrapolate = extrapolate,
-				posVelocity = dp,
-				rotVelocity = dr,
-			}
-		end
-		
-		function TransformExtrapolator:Reset()
-			self.lastCFrame = nil
-		end
-	end
-	
-	function Poppercam.new()
-		local self = setmetatable(BaseOcclusion.new(), Poppercam)
-		self.focusExtrapolator = TransformExtrapolator.new()
-		return self
-	end
-	
-	function Poppercam:GetOcclusionMode()
-		return Enum.DevCameraOcclusionMode.Zoom
-	end
-	
-	function Poppercam:Enable(enable)
-		self.focusExtrapolator:Reset()
-	end
-	
-	function Poppercam:Update(renderDt, desiredCameraCFrame, desiredCameraFocus, cameraController)
-		local rotatedFocus = CFrame.new(desiredCameraFocus.p, desiredCameraCFrame.p)
-		* CFrame.new(
-			0, 0, 0,
-			-1, 0, 0,
-			0, 1, 0,
-			0, 0, -1
-		)
-		
-		local extrapolation = self.focusExtrapolator:Step(renderDt, rotatedFocus)
-		local zoom = ZoomController.Update(renderDt, rotatedFocus, extrapolation)
-		
-		return rotatedFocus * CFrame.new(0, 0, zoom), desiredCameraFocus
-	end
-	
-	-- Called when character is added
-	function Poppercam:CharacterAdded(character, player)
-	end
-	
-	-- Called when character is about to be removed
-	function Poppercam:CharacterRemoving(character, player)
-	end
-	
-	function Poppercam:OnCameraSubjectChanged(newSubject)
-	end
-	
-end
-
-local TransparencyController = {} do
-	TransparencyController.__index = TransparencyController
-	
-	--[[
-		TransparencyController - Manages transparency of player character at close camera-to-subject distances
-		2018 Camera Update - AllYourBlox
-	--]]
-	
-	local MAX_TWEEN_RATE = 2.8 -- per second
-	
-	function TransparencyController.new()
-		local self = setmetatable({}, TransparencyController)
-		
-		self.transparencyDirty = false
-		self.enabled = false
-		self.lastTransparency = nil
-		
-		self.descendantAddedConn, self.descendantRemovingConn = nil, nil
-		self.toolDescendantAddedConns = {}
-		self.toolDescendantRemovingConns = {}
-		self.cachedParts = {}
-		
-		return self
-	end
-	
-	
-	function TransparencyController:HasToolAncestor(object: Instance)
-		if object.Parent == nil then return false end
-		assert(object.Parent, "")
-		return object.Parent:IsA("Tool") or self:HasToolAncestor(object.Parent)
-	end
-	
-	function TransparencyController:IsValidPartToModify(part: BasePart)
-		if part:IsA("BasePart") or part:IsA("Decal") then
-			return not self:HasToolAncestor(part)
-		end
-		return false
-	end
-	
-	function TransparencyController:CachePartsRecursive(object)
-		if object then
-			if self:IsValidPartToModify(object) then
-				self.cachedParts[object] = true
-				self.transparencyDirty = true
-			end
-			for _, child in pairs(object:GetChildren()) do
-				self:CachePartsRecursive(child)
-			end
-		end
-	end
-	
-	function TransparencyController:TeardownTransparency()
-		for child, _ in pairs(self.cachedParts) do
-			child.LocalTransparencyModifier = 0
-		end
-		self.cachedParts = {}
-		self.transparencyDirty = true
-		self.lastTransparency = nil
-		
-		if self.descendantAddedConn then
-			self.descendantAddedConn:disconnect()
-			self.descendantAddedConn = nil
-		end
-		if self.descendantRemovingConn then
-			self.descendantRemovingConn:disconnect()
-			self.descendantRemovingConn = nil
-		end
-		for object, conn in pairs(self.toolDescendantAddedConns) do
-			conn:Disconnect()
-			self.toolDescendantAddedConns[object] = nil
-		end
-		for object, conn in pairs(self.toolDescendantRemovingConns) do
-			conn:Disconnect()
-			self.toolDescendantRemovingConns[object] = nil
-		end
-	end
-	
-	function TransparencyController:SetupTransparency(character)
-		self:TeardownTransparency()
-		
-		if self.descendantAddedConn then self.descendantAddedConn:disconnect() end
-		self.descendantAddedConn = character.DescendantAdded:Connect(function(object)
-			-- This is a part we want to invisify
-			if self:IsValidPartToModify(object) then
-				self.cachedParts[object] = true
-				self.transparencyDirty = true
-				-- There is now a tool under the character
-			elseif object:IsA("Tool") then
-				if self.toolDescendantAddedConns[object] then
-					self.toolDescendantAddedConns[object]:Disconnect()
-				end
-				
-				self.toolDescendantAddedConns[object] =
-					object.DescendantAdded:Connect(function(toolChild)
-						self.cachedParts[toolChild] = nil
-						if toolChild:IsA("BasePart") or toolChild:IsA("Decal") then
-							-- Reset the transparency
-							toolChild.LocalTransparencyModifier = 0
-						end
-					end)
-				
-				if self.toolDescendantRemovingConns[object] then
-					self.toolDescendantRemovingConns[object]:Disconnect()
-				end
-				
-				self.toolDescendantRemovingConns[object] =
-					object.DescendantRemoving:Connect(function(formerToolChild)
-						wait() -- wait for new parent
-						if character
-						and formerToolChild
-						and formerToolChild:IsDescendantOf(character) then
-							if self:IsValidPartToModify(formerToolChild) then
-								self.cachedParts[formerToolChild] = true
-								self.transparencyDirty = true
-							end
-						end
-					end)
-				
-			end
-		end)
-		
-		if self.descendantRemovingConn then
-			self.descendantRemovingConn:Disconnect()
-		end
-		
-		self.descendantRemovingConn =
-			character.DescendantRemoving:Connect(function(object)
-				if self.cachedParts[object] then
-					self.cachedParts[object] = nil
-					-- Reset the transparency
-					object.LocalTransparencyModifier = 0
-				end
-			end)
-		
-		self:CachePartsRecursive(character)
-	end
-	
-	
-	function TransparencyController:Enable(enable: boolean)
-		if self.enabled ~= enable then
-			self.enabled = enable
-		end
-	end
-	
-	function TransparencyController:SetSubject(subject)
-		local character
-		
-		if subject and subject:IsA("Humanoid") then
-			character = subject.Parent
-		end
-		
-		if subject and subject:IsA("VehicleSeat") and subject.Occupant then
-			character = subject.Occupant.Parent
-		end
-		
-		if character then
-			self:SetupTransparency(character)
-		else
-			self:TeardownTransparency()
-		end
-	end
-	
-	function TransparencyController:Update(dt)
-		local currentCamera = workspace.CurrentCamera
-		
-		if currentCamera and self.enabled then
-			-- calculate goal transparency based on distance
-			local distance = (currentCamera.Focus.p - currentCamera.CoordinateFrame.p).Magnitude
-			local transparency = (distance < 2) and (1.0 - (distance - 0.5) / 1.5) or 0 -- (7 - distance) / 5
-			if transparency < 0.5 then -- too far, don't control transparency
-				transparency = 0
-			end
-			
-			-- tween transparency if the goal is not fully transparent and the subject was not fully transparent last frame
-			if self.lastTransparency and transparency < 1 and self.lastTransparency < 0.95 then
-				local deltaTransparency = transparency - self.lastTransparency
-				local maxDelta = MAX_TWEEN_RATE * dt
-				deltaTransparency = math.clamp(deltaTransparency, -maxDelta, maxDelta)
-				transparency = self.lastTransparency + deltaTransparency
-			else
-				self.transparencyDirty = true
-			end
-			
-			transparency = math.clamp(CameraUtils.Round(transparency, 2), 0, 1)
-			
-			-- update transparencies 
-			if self.transparencyDirty or self.lastTransparency ~= transparency then
-				for child, _ in pairs(self.cachedParts) do
-					child.LocalTransparencyModifier = transparency
-				end
-				self.transparencyDirty = false
-				self.lastTransparency = transparency
-			end
-		end
-	end
-	
-end
-
-
-local VRBaseCamera = setmetatable({}, BaseCamera) do
-	VRBaseCamera.__index = VRBaseCamera
-	
-	--[[
-		VRBaseCamera - Base class for VR camera
-		2021 Roblox VR
-	--]]
-	
-	--[[ Local Constants ]]--
-	local VR_ANGLE = math.rad(15)
-	local VR_PANEL_SIZE = 512
-	local VR_ZOOM = 7
-	local VR_FADE_SPEED = 10 -- 1/10 second
-	local VR_SCREEN_EGDE_BLEND_TIME = 0.14
-	local VR_SEAT_OFFSET = Vector3.new(0, 4, 0)
-	
-	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
-	
-	function VRBaseCamera.new()
-		local self = setmetatable(BaseCamera.new(), VRBaseCamera)
-		
-		-- distance is different in VR
-		self.defaultDistance = VR_ZOOM
-		
-		self.defaultSubjectDistance = math.clamp(
-			self.defaultDistance,
-			localPlayer.CameraMinZoomDistance,
-			localPlayer.CameraMaxZoomDistance
-		)
-		
-		self.currentSubjectDistance = math.clamp(
-			self.defaultDistance,
-			localPlayer.CameraMinZoomDistance,
-			localPlayer.CameraMaxZoomDistance
-		)
-		
-		-- VR screen effect
-		self.VRFadeResetTimer = 0
-		self.VREdgeBlurTimer = 0
-		
-		-- initialize vr specific variables
-		self.gamepadResetConnection = nil
-		self.needsReset = true
-		
-		return self
-	end
-	
-	function VRBaseCamera:GetModuleName()
-		return "VRBaseCamera"
-	end
-	
-	function VRBaseCamera:GamepadZoomPress()
-		local dist = self:GetCameraToSubjectDistance()
-		
-		if dist > VR_ZOOM / 2 then
-			self:SetCameraToSubjectDistance(0)
-			self.currentSubjectDistance = 0
-		else
-			self:SetCameraToSubjectDistance(VR_ZOOM)
-			self.currentSubjectDistance = VR_ZOOM
-		end
-		
-		self:GamepadReset()
-		self:ResetZoom()
-	end
-	
-	function VRBaseCamera:GamepadReset()
-		self.needsReset = true
-	end
-	
-	function VRBaseCamera:ResetZoom()
-		ZoomController.SetZoomParameters(self.currentSubjectDistance, 0)
-		ZoomController.ReleaseSpring()
-	end
-	
-	function VRBaseCamera:OnEnable(enable: boolean)
-		if enable then
-			self.gamepadResetConnection = CameraInput.gamepadReset:Connect(function()
-				self:GamepadReset()
-			end)
-		else
-			-- make sure zoom is reset when switching to another camera
-			if self.inFirstPerson then
-				self:GamepadZoomPress()
-			end
-			
-			if self.gamepadResetConnection then
-				self.gamepadResetConnection:Disconnect()
-				self.gamepadResetConnection = nil
-			end
-			
-			-- reset VR effects
-			self.VREdgeBlurTimer = 0
-			self:UpdateEdgeBlur(localPlayer, 1)
-			local VRFade = Lighting:FindFirstChild("VRFade")
-			if VRFade then
-				VRFade.Brightness = 0
-			end
-		end
-	end
-	
-	function VRBaseCamera:UpdateDefaultSubjectDistance()
-		self.defaultSubjectDistance = math.clamp(
-			VR_ZOOM,
-			localPlayer.CameraMinZoomDistance,
-			localPlayer.CameraMaxZoomDistance
-		)
-	end
-	
-	-- Nominal distance, set by dollying in and out with the mouse wheel or equivalent, not measured distance
-	function VRBaseCamera:GetCameraToSubjectDistance(): number
-		return self.currentSubjectDistance
-	end
-	
-	-- VR only supports 1st person or 3rd person and no overrides
-	function VRBaseCamera:SetCameraToSubjectDistance(desiredSubjectDistance: number): number
-		local lastSubjectDistance = self.currentSubjectDistance
-		
-		local newSubjectDistance = math.clamp(
-			desiredSubjectDistance,
-			0,
-			localPlayer.CameraMaxZoomDistance
-		)
-		
-		if newSubjectDistance < 1.0 then
-			self.currentSubjectDistance = 0.5
-			if not self.inFirstPerson then
-				self:EnterFirstPerson()
-			end
-		else
-			self.currentSubjectDistance = newSubjectDistance
-			if self.inFirstPerson then
-				self:LeaveFirstPerson()
-			end
-		end
-		
-		-- Pass target distance and zoom direction to the zoom controller
-		ZoomController.SetZoomParameters(
-			self.currentSubjectDistance,
-			math.sign(desiredSubjectDistance - lastSubjectDistance)
-		)
-		
-		-- Returned only for convenience to the caller to know the outcome
-		return self.currentSubjectDistance
-	end
-	
-	-- defines subject and height of VR camera
-	function VRBaseCamera:GetVRFocus(subjectPosition, timeDelta)
-		local lastFocus = self.lastCameraFocus or subjectPosition
-		
-		self.cameraTranslationConstraints = Vector3.new(
-			self.cameraTranslationConstraints.x,
-			math.min(1, self.cameraTranslationConstraints.y + timeDelta),
-			self.cameraTranslationConstraints.z)
-		
-		local cameraHeightDelta = Vector3.new(0, self:GetCameraHeight(), 0)
-		local newFocus = CFrame.new(Vector3.new(
-				subjectPosition.x,
-				lastFocus.y,
-				subjectPosition.z
-			): Lerp(subjectPosition + cameraHeightDelta, self.cameraTranslationConstraints.y))
-		
-		return newFocus
-	end
-	
-	-- (VR) Screen effects --------------
-	function VRBaseCamera:StartFadeFromBlack()
-		if UserGameSettings.VignetteEnabled == false then
-			return
-		end
-		
-		local VRFade = Lighting:FindFirstChild("VRFade")
-		if not VRFade then
-			VRFade = Instance.new("ColorCorrectionEffect")
-			VRFade.Name = "VRFade"
-			VRFade.Parent = Lighting
-		end
-		VRFade.Brightness = -1
-		self.VRFadeResetTimer = 0.1
-	end
-	
-	function VRBaseCamera:UpdateFadeFromBlack(timeDelta: number)
-		local VRFade = Lighting:FindFirstChild("VRFade")
-		if self.VRFadeResetTimer > 0  then
-			self.VRFadeResetTimer = math.max(self.VRFadeResetTimer - timeDelta, 0)
-			
-			local VRFade = Lighting:FindFirstChild("VRFade")
-			if VRFade and VRFade.Brightness < 0 then
-				VRFade.Brightness = math.min(VRFade.Brightness + timeDelta * VR_FADE_SPEED, 0)
-			end
-		else
-			if VRFade then -- sanity check, VRFade off
-				VRFade.Brightness = 0
-			end
-		end
-	end
-	
-	function VRBaseCamera:StartVREdgeBlur(player)
-		if UserGameSettings.VignetteEnabled == false then
-			return
-		end
-		
-		local blurPart = workspace.CurrentCamera:FindFirstChild("VRBlurPart")
-		if not blurPart then
-			local basePartSize = Vector3.new(0.44,0.47,1)
-			blurPart = Instance.new("Part")
-			blurPart.Name = "VRBlurPart"
-			blurPart.Parent = workspace.CurrentCamera
-			blurPart.CanTouch = false
-			blurPart.CanCollide = false
-			blurPart.CanQuery = false
-			blurPart.Anchored = true
-			blurPart.Size = basePartSize
-			blurPart.Transparency = 1
-			blurPart.CastShadow = false
-			
-			RunService.RenderStepped:Connect(function(step)
-				local userHeadCF = VRService:GetUserCFrame(Enum.UserCFrame.Head)
-				local camera = workspace.CurrentCamera
-				
-				if FFlagUserVRApplyHeadScaleToHandPositions then
-					local vrCF = camera.CFrame
-						* (CFrame.new(userHeadCF.p * (camera).HeadScale) * (userHeadCF - userHeadCF.p))
-					
-					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0))
-						+ vrCF.LookVector * (1.05 * camera.HeadScale)
-					
-					blurPart.Size = basePartSize * camera.HeadScale
-				else
-					local vrCF = camera.CFrame * userHeadCF
-					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0)) + vrCF.LookVector * 1.05
-				end
-			end)
-		end
-		
-		local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
-		local VRBlur = nil
-		if VRScreen then
-			VRBlur = VRScreen:FindFirstChild("VRBlur")
-		end
-		
-		if not VRBlur then
-			if not VRScreen then
-				VRScreen = Instance.new("SurfaceGui")
-			end
-			
-			VRScreen.Name = "VRBlurScreen"
-			VRScreen.Parent = player.PlayerGui
-			
-			VRScreen.Adornee = blurPart
-			
-			VRBlur = Instance.new("ImageLabel")
-			VRBlur.Name = "VRBlur"
-			VRBlur.Parent = VRScreen
-			
-			VRBlur.Image = "rbxasset://textures/ui/VR/edgeBlur.png"
-			VRBlur.AnchorPoint = Vector2.new(0.5, 0.5)
-			VRBlur.Position = UDim2.new(0.5, 0, 0.5, 0)
-			
-			-- this computes the ratio between the GUI 3D panel and the VR viewport
-			-- adding 15% overshoot for edges on 2 screen headsets
-			local ratioX = workspace.CurrentCamera.ViewportSize.X * 2.3 / VR_PANEL_SIZE
-			local ratioY = workspace.CurrentCamera.ViewportSize.Y * 2.3 / VR_PANEL_SIZE
-			
-			VRBlur.Size = UDim2.fromScale(ratioX, ratioY)
-			VRBlur.BackgroundTransparency = 1
-			VRBlur.Active = true
-			VRBlur.ScaleType = Enum.ScaleType.Stretch
-		end
-		
-		VRBlur.Visible = true
-		VRBlur.ImageTransparency = 0
-		self.VREdgeBlurTimer = VR_SCREEN_EGDE_BLEND_TIME
-	end
-	
-	function VRBaseCamera:UpdateEdgeBlur(player, timeDelta)
-		local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
-		local VRBlur = nil
-		if VRScreen then
-			VRBlur = VRScreen:FindFirstChild("VRBlur")
-		end
-		
-		if VRBlur then
-			if self.VREdgeBlurTimer > 0 then
-				self.VREdgeBlurTimer = self.VREdgeBlurTimer - timeDelta
-				
-				local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
-				if VRScreen then
-					local VRBlur = VRScreen:FindFirstChild("VRBlur")
-					if VRBlur then
-						VRBlur.ImageTransparency = 1.0 - math.clamp(self.VREdgeBlurTimer, 0.01,
-							VR_SCREEN_EGDE_BLEND_TIME) * (1/VR_SCREEN_EGDE_BLEND_TIME)
-					end
-				end
-			else
-				VRBlur.Visible = false
-			end
-		end
-	end
-	
-	function VRBaseCamera:GetCameraHeight()
-		if not self.inFirstPerson then
-			return math.sin(VR_ANGLE) * self.currentSubjectDistance
-		end
-		return 0
-	end
-	
-	function VRBaseCamera:GetSubjectCFrame(): CFrame
-		local result = BaseCamera.GetSubjectCFrame(self)
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		
-		if not cameraSubject then
-			return result
-		end
-		
-		-- new VR system overrides
-		if cameraSubject:IsA("Humanoid") then
-			local humanoid = cameraSubject
-			local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
-			
-			if humanoidIsDead and humanoid == self.lastSubject then
-				result = self.lastSubjectCFrame
-			end
-		end
-		
-		if result then
-			self.lastSubjectCFrame = result
-		end
-		
-		return result
-	end
-	
-	function VRBaseCamera:GetSubjectPosition(): Vector3?
-		local result = BaseCamera.GetSubjectPosition(self)
-		
-		-- new VR system overrides
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
-		if cameraSubject then
-			if cameraSubject:IsA("Humanoid") then
-				local humanoid = cameraSubject
-				local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
-				
-				if  humanoidIsDead and humanoid == self.lastSubject then
-					result = self.lastSubjectPosition
-				end
-			elseif cameraSubject:IsA("VehicleSeat") then
-				local offset = VR_SEAT_OFFSET
-				result = cameraSubject.CFrame.p + cameraSubject.CFrame:vectorToWorldSpace(offset)
-			end
-		else
-			return nil
-		end
-		
-		self.lastSubjectPosition = result
-		
-		return result
-	end
-	
-end
-
-
-local VRCamera = setmetatable({}, VRBaseCamera) do
-	VRCamera.__index = VRCamera
-
-	--[[
-		VRCamera - Roblox VR camera control module
-		2021 Roblox VR
-	--]]
-	
-	-- Local private variables and constants
-	local CAMERA_BLACKOUT_TIME = 0.1
-	local FP_ZOOM = 0.5
-	
-	local FFlagUserFlagEnableVRUpdate3 = getFastFlag("UserFlagEnableVRUpdate3")
-	
-	function VRCamera.new()
-		local self = setmetatable(VRBaseCamera.new(), VRCamera)
-		
-		self.lastUpdate = tick()
-		self:Reset()
-		
-		return self
-	end
-	
-	function VRCamera:Reset()
-		self.needsReset = true
-		self.needsBlackout = true
-		self.motionDetTime = 0.0
-		self.blackOutTimer = 0
-		self.lastCameraResetPosition = nil
-		self.stepRotateTimeout = 0.0
-		self.cameraOffsetRotation = 0
-		self.cameraOffsetRotationDiscrete = 0
-	end
-	
-	function VRCamera:Update(timeDelta)
-		local camera = workspace.CurrentCamera
-		local newCameraCFrame = camera.CFrame
-		local newCameraFocus = camera.Focus
-		
-		local humanoid = self:GetHumanoid()
-		local cameraSubject = camera.CameraSubject
-		
-		if self.lastUpdate == nil or timeDelta > 1 then
-			self.lastCameraTransform = nil
-		end
-		
-		self:StepZoom()
-		-- update fullscreen effects
-		self:UpdateFadeFromBlack(timeDelta)
-		self:UpdateEdgeBlur(localPlayer, timeDelta)
-		
-		local lastSubjPos = self.lastSubjectPosition
-		local subjectPosition: Vector3 = self:GetSubjectPosition()
-		-- transition from another camera or from spawn
-		if self.needsBlackout then 
-			self:StartFadeFromBlack()
-			
-			local dt = math.clamp(timeDelta, 0.0001, 0.1)
-			self.blackOutTimer += dt
-			if self.blackOutTimer > CAMERA_BLACKOUT_TIME and game:IsLoaded() then
-				self.needsBlackout = false
-				self.needsReset = true
-			end
-		end
-		
-		if subjectPosition and camera then
-			newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
-			
-			if self:IsInFirstPerson() then
-				-- update camera CFrame
-				newCameraCFrame, newCameraFocus = self:UpdateFirstPersonTransform(
-					timeDelta,newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
-			else -- 3rd person
-				-- update camera CFrame
-				newCameraCFrame, newCameraFocus = self:UpdateThirdPersonTransform(
-					timeDelta, newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
-			end
-			
-			self.lastCameraTransform = newCameraCFrame
-			self.lastCameraFocus = newCameraFocus
-		end
-		
-		self.lastUpdate = tick()
-		return newCameraCFrame, newCameraFocus
-	end
-	
-	function VRCamera:UpdateFirstPersonTransform(timeDelta, newCameraCFrame,
-		newCameraFocus, lastSubjPos, subjectPosition)
-		
-		-- transition from TP to FP
-		if self.needsReset then
-			self:StartFadeFromBlack()
-			self.needsReset = false
-			self.stepRotateTimeout = 0.25
-			self.VRCameraFocusFrozen = true
-			self.cameraOffsetRotation = 0
-			self.cameraOffsetRotationDiscrete = 0
-		end
-		
-		-- blur screen edge during movement
-		local subjectDelta = lastSubjPos - subjectPosition
-		if subjectDelta.magnitude > 0.01 then
-			self:StartVREdgeBlur(localPlayer)
-		end
-		-- straight view, not angled down
-		local cameraFocusP = newCameraFocus.p
-		local cameraLookVector = self:GetCameraLookVector()
-		cameraLookVector = Vector3.new(cameraLookVector.X, 0, cameraLookVector.Z).Unit
-		
-		if self.stepRotateTimeout > 0 then
-			self.stepRotateTimeout -= timeDelta
-		end
-		
-		-- step rotate in 1st person
-		local rotateInput = CameraInput.getRotation()
-		local yawDelta = 0
-		if FFlagUserFlagEnableVRUpdate3 and UserGameSettings.VRSmoothRotationEnabled then
-			yawDelta = rotateInput.X
-		else
-			if self.stepRotateTimeout <= 0.0 and math.abs(rotateInput.X) > 0.03 then
-				yawDelta = 0.5
-				if rotateInput.X < 0 then
-					yawDelta = -0.5
-				end
-				self.needsReset = true
-			end
-		end
-		
-		local newLookVector = self:CalculateNewLookVectorFromArg(
-			cameraLookVector,
-			Vector2.new(yawDelta, 0)
-		)
-		
-		newCameraCFrame = CFrame.new(
-			cameraFocusP - (FP_ZOOM * newLookVector),
-			cameraFocusP
-		)
-		
-		return newCameraCFrame, newCameraFocus
-	end
-	
-	function VRCamera:UpdateThirdPersonTransform(timeDelta, newCameraCFrame, newCameraFocus,
-		lastSubjPos, subjectPosition)
-		
-		local zoom = self:GetCameraToSubjectDistance()
-		if zoom < 0.5 then
-			zoom = 0.5
-		end
-		
-		if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
-			-- compute delta of subject since last update
-			local subjectDelta = lastSubjPos - subjectPosition
-			local moveVector = ControlModule:GetMoveVector()
-			
-			-- is the subject still moving?
-			local isMoving = subjectDelta.magnitude > 0.01 or moveVector.magnitude > 0.01
-			if isMoving then
-				self.motionDetTime = 0.1
-			end
-			
-			self.motionDetTime = self.motionDetTime - timeDelta
-			if self.motionDetTime > 0 then
-				isMoving = true
-			end
-			
-			if isMoving and not self.needsReset then
-				-- if subject moves keep old camera focus
-				newCameraFocus = self.lastCameraFocus
-				
-				-- if the focus subject stopped, time to reset the camera
-				self.VRCameraFocusFrozen = true
-			else
-				local subjectMoved = self.lastCameraResetPosition == nil
-					or (subjectPosition - self.lastCameraResetPosition).Magnitude > 1
-				
-				-- compute offset for 3rd person camera rotation
-				local rotateInput = CameraInput.getRotation()
-				local userCameraPan = FFlagUserFlagEnableVRUpdate3 and rotateInput ~= Vector2.new()
-				local panUpdate = false
-				if userCameraPan then
-					if rotateInput.X ~= 0 then
-						local tempRotation = self.cameraOffsetRotation + rotateInput.X;
-						if tempRotation < -math.pi then
-							tempRotation = math.pi - (tempRotation + math.pi) 
-						else
-							if tempRotation > math.pi then
-								tempRotation = -math.pi + (tempRotation - math.pi) 
-							end
-						end
-						self.cameraOffsetRotation = math.clamp(tempRotation, -math.pi, math.pi)
-						if UserGameSettings.VRSmoothRotationEnabled then
-							self.cameraOffsetRotationDiscrete = self.cameraOffsetRotation
-							
-							-- get player facing direction
-							local humanoid = self:GetHumanoid()
-							local forwardVector = humanoid.Torso
-								and humanoid.Torso.CFrame.lookVector
-								or Vector3.new(1, 0, 0)
-							
-							-- adjust camera height
-							local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
-							local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
-							
-							-- compute new cframe at height level to subject
-							local lookAtPos = Vector3.new(
-								newCameraFocus.Position.X,
-								newCameraPos.Y,
-								newCameraFocus.Position.Z
-							)
-							
-							local tempCF = CFrame.new(newCameraPos, lookAtPos)
-							tempCF *= CFrame.fromAxisAngle(
-								Vector3.new(0, 1, 0),
-								self.cameraOffsetRotationDiscrete
-							)
-							
-							newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
-							
-							newCameraCFrame = CFrame.new(newCameraPos, lookAtPos)
-						else
-							local tempRotDisc = math.floor(self.cameraOffsetRotation * 12 / 12)
-							if tempRotDisc ~= self.cameraOffsetRotationDiscrete then
-								self.cameraOffsetRotationDiscrete = tempRotDisc
-								panUpdate = true
-							end
-						end
-					end
-				end
-				
-				-- recenter the camera on teleport
-				if (self.VRCameraFocusFrozen and subjectMoved) or self.needsReset or panUpdate then
-					if not panUpdate then
-						self.cameraOffsetRotationDiscrete = 0
-						self.cameraOffsetRotation = 0
-					end
-					
-					VRService:RecenterUserHeadCFrame()
-					
-					self.VRCameraFocusFrozen = false
-					self.needsReset = false
-					self.lastCameraResetPosition = subjectPosition
-					
-					self:ResetZoom()
-					self:StartFadeFromBlack()
-					
-					-- get player facing direction
-					local humanoid = self:GetHumanoid()
-					local forwardVector = humanoid.Torso
-						and humanoid.Torso.CFrame.lookVector
-						or Vector3.new(1, 0, 0)
-					
-					-- adjust camera height
-					local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
-					local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
-					-- compute new cframe at height level to subject
-					local lookAtPos = Vector3.new(newCameraFocus.Position.X, newCameraPos.Y, newCameraFocus.Position.Z)
-					
-					if FFlagUserFlagEnableVRUpdate3 and self.cameraOffsetRotation ~= 0 then
-						local tempCF = CFrame.new(newCameraPos, lookAtPos)
-						tempCF *= CFrame.fromAxisAngle(Vector3.new(0,1,0), self.cameraOffsetRotationDiscrete)
-						newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
-					end
-					
-					newCameraCFrame = CFrame.new(newCameraPos, lookAtPos)
-				end
-			end
-		end
-		
-		return newCameraCFrame, newCameraFocus
-	end
-	
-	function VRCamera:EnterFirstPerson()
-		self.inFirstPerson = true
-		self:UpdateMouseBehavior()
-	end
-	
-	function VRCamera:LeaveFirstPerson()
-		self.inFirstPerson = false
-		self.needsReset = true
-		self:UpdateMouseBehavior()
-		
-		if self.VRBlur then
-			self.VRBlur.Visible = false
-		end
 	end
 	
 end
@@ -5459,6 +4392,658 @@ local VehicleCamera = setmetatable({}, BaseCamera) do
 	
 end
 
+
+local VRBaseCamera = setmetatable({}, BaseCamera) do
+	VRBaseCamera.__index = VRBaseCamera
+	
+	--[[
+		VRBaseCamera - Base class for VR camera
+		2021 Roblox VR
+	--]]
+	
+	--[[ Local Constants ]]--
+	local VR_ANGLE = math.rad(15)
+	local VR_PANEL_SIZE = 512
+	local VR_ZOOM = 7
+	local VR_FADE_SPEED = 10 -- 1/10 second
+	local VR_SCREEN_EGDE_BLEND_TIME = 0.14
+	local VR_SEAT_OFFSET = Vector3.new(0, 4, 0)
+	
+	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
+	
+	function VRBaseCamera.new()
+		local self = setmetatable(BaseCamera.new(), VRBaseCamera)
+		
+		-- distance is different in VR
+		self.defaultDistance = VR_ZOOM
+		
+		self.defaultSubjectDistance = math.clamp(
+			self.defaultDistance,
+			localPlayer.CameraMinZoomDistance,
+			localPlayer.CameraMaxZoomDistance
+		)
+		
+		self.currentSubjectDistance = math.clamp(
+			self.defaultDistance,
+			localPlayer.CameraMinZoomDistance,
+			localPlayer.CameraMaxZoomDistance
+		)
+		
+		-- VR screen effect
+		self.VRFadeResetTimer = 0
+		self.VREdgeBlurTimer = 0
+		
+		-- initialize vr specific variables
+		self.gamepadResetConnection = nil
+		self.needsReset = true
+		
+		return self
+	end
+	
+	function VRBaseCamera:GetModuleName()
+		return "VRBaseCamera"
+	end
+	
+	function VRBaseCamera:GamepadZoomPress()
+		local dist = self:GetCameraToSubjectDistance()
+		
+		if dist > VR_ZOOM / 2 then
+			self:SetCameraToSubjectDistance(0)
+			self.currentSubjectDistance = 0
+		else
+			self:SetCameraToSubjectDistance(VR_ZOOM)
+			self.currentSubjectDistance = VR_ZOOM
+		end
+		
+		self:GamepadReset()
+		self:ResetZoom()
+	end
+	
+	function VRBaseCamera:GamepadReset()
+		self.needsReset = true
+	end
+	
+	function VRBaseCamera:ResetZoom()
+		ZoomController.SetZoomParameters(self.currentSubjectDistance, 0)
+		ZoomController.ReleaseSpring()
+	end
+	
+	function VRBaseCamera:OnEnable(enable: boolean)
+		if enable then
+			self.gamepadResetConnection = CameraInput.gamepadReset:Connect(function()
+				self:GamepadReset()
+			end)
+		else
+			-- make sure zoom is reset when switching to another camera
+			if self.inFirstPerson then
+				self:GamepadZoomPress()
+			end
+			
+			if self.gamepadResetConnection then
+				self.gamepadResetConnection:Disconnect()
+				self.gamepadResetConnection = nil
+			end
+			
+			-- reset VR effects
+			self.VREdgeBlurTimer = 0
+			self:UpdateEdgeBlur(localPlayer, 1)
+			local VRFade = Lighting:FindFirstChild("VRFade")
+			if VRFade then
+				VRFade.Brightness = 0
+			end
+		end
+	end
+	
+	function VRBaseCamera:UpdateDefaultSubjectDistance()
+		self.defaultSubjectDistance = math.clamp(
+			VR_ZOOM,
+			localPlayer.CameraMinZoomDistance,
+			localPlayer.CameraMaxZoomDistance
+		)
+	end
+	
+	-- Nominal distance, set by dollying in and out with the mouse wheel or equivalent, not measured distance
+	function VRBaseCamera:GetCameraToSubjectDistance(): number
+		return self.currentSubjectDistance
+	end
+	
+	-- VR only supports 1st person or 3rd person and no overrides
+	function VRBaseCamera:SetCameraToSubjectDistance(desiredSubjectDistance: number): number
+		local lastSubjectDistance = self.currentSubjectDistance
+		
+		local newSubjectDistance = math.clamp(
+			desiredSubjectDistance,
+			0,
+			localPlayer.CameraMaxZoomDistance
+		)
+		
+		if newSubjectDistance < 1.0 then
+			self.currentSubjectDistance = 0.5
+			if not self.inFirstPerson then
+				self:EnterFirstPerson()
+			end
+		else
+			self.currentSubjectDistance = newSubjectDistance
+			if self.inFirstPerson then
+				self:LeaveFirstPerson()
+			end
+		end
+		
+		-- Pass target distance and zoom direction to the zoom controller
+		ZoomController.SetZoomParameters(
+			self.currentSubjectDistance,
+			math.sign(desiredSubjectDistance - lastSubjectDistance)
+		)
+		
+		-- Returned only for convenience to the caller to know the outcome
+		return self.currentSubjectDistance
+	end
+	
+	-- defines subject and height of VR camera
+	function VRBaseCamera:GetVRFocus(subjectPosition, timeDelta)
+		local lastFocus = self.lastCameraFocus or subjectPosition
+		
+		self.cameraTranslationConstraints = Vector3.new(
+			self.cameraTranslationConstraints.x,
+			math.min(1, self.cameraTranslationConstraints.y + timeDelta),
+			self.cameraTranslationConstraints.z)
+		
+		local cameraHeightDelta = Vector3.new(0, self:GetCameraHeight(), 0)
+		local newFocus = CFrame.new(Vector3.new(
+			subjectPosition.x,
+			lastFocus.y,
+			subjectPosition.z
+			): Lerp(subjectPosition + cameraHeightDelta, self.cameraTranslationConstraints.y))
+		
+		return newFocus
+	end
+	
+	-- (VR) Screen effects --------------
+	function VRBaseCamera:StartFadeFromBlack()
+		if UserGameSettings.VignetteEnabled == false then
+			return
+		end
+		
+		local VRFade = Lighting:FindFirstChild("VRFade")
+		if not VRFade then
+			VRFade = Instance.new("ColorCorrectionEffect")
+			VRFade.Name = "VRFade"
+			VRFade.Parent = Lighting
+		end
+		VRFade.Brightness = -1
+		self.VRFadeResetTimer = 0.1
+	end
+	
+	function VRBaseCamera:UpdateFadeFromBlack(timeDelta: number)
+		local VRFade = Lighting:FindFirstChild("VRFade")
+		if self.VRFadeResetTimer > 0  then
+			self.VRFadeResetTimer = math.max(self.VRFadeResetTimer - timeDelta, 0)
+			
+			local VRFade = Lighting:FindFirstChild("VRFade")
+			if VRFade and VRFade.Brightness < 0 then
+				VRFade.Brightness = math.min(VRFade.Brightness + timeDelta * VR_FADE_SPEED, 0)
+			end
+		else
+			if VRFade then -- sanity check, VRFade off
+				VRFade.Brightness = 0
+			end
+		end
+	end
+	
+	function VRBaseCamera:StartVREdgeBlur(player)
+		if UserGameSettings.VignetteEnabled == false then
+			return
+		end
+		
+		local blurPart = workspace.CurrentCamera:FindFirstChild("VRBlurPart")
+		if not blurPart then
+			local basePartSize = Vector3.new(0.44,0.47,1)
+			blurPart = Instance.new("Part")
+			blurPart.Name = "VRBlurPart"
+			blurPart.Parent = workspace.CurrentCamera
+			blurPart.CanTouch = false
+			blurPart.CanCollide = false
+			blurPart.CanQuery = false
+			blurPart.Anchored = true
+			blurPart.Size = basePartSize
+			blurPart.Transparency = 1
+			blurPart.CastShadow = false
+			
+			RunService.RenderStepped:Connect(function(step)
+				local userHeadCF = VRService:GetUserCFrame(Enum.UserCFrame.Head)
+				local camera = workspace.CurrentCamera
+				
+				if FFlagUserVRApplyHeadScaleToHandPositions then
+					local vrCF = camera.CFrame
+						* (CFrame.new(userHeadCF.p * (camera).HeadScale) * (userHeadCF - userHeadCF.p))
+					
+					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0))
+						+ vrCF.LookVector * (1.05 * camera.HeadScale)
+					
+					blurPart.Size = basePartSize * camera.HeadScale
+				else
+					local vrCF = camera.CFrame * userHeadCF
+					blurPart.CFrame = (vrCF * CFrame.Angles(0, math.rad(180), 0)) + vrCF.LookVector * 1.05
+				end
+			end)
+		end
+		
+		local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
+		local VRBlur = nil
+		if VRScreen then
+			VRBlur = VRScreen:FindFirstChild("VRBlur")
+		end
+		
+		if not VRBlur then
+			if not VRScreen then
+				VRScreen = Instance.new("SurfaceGui")
+			end
+			
+			VRScreen.Name = "VRBlurScreen"
+			VRScreen.Parent = player.PlayerGui
+			
+			VRScreen.Adornee = blurPart
+			
+			VRBlur = Instance.new("ImageLabel")
+			VRBlur.Name = "VRBlur"
+			VRBlur.Parent = VRScreen
+			
+			VRBlur.Image = "rbxasset://textures/ui/VR/edgeBlur.png"
+			VRBlur.AnchorPoint = Vector2.new(0.5, 0.5)
+			VRBlur.Position = UDim2.new(0.5, 0, 0.5, 0)
+			
+			-- this computes the ratio between the GUI 3D panel and the VR viewport
+			-- adding 15% overshoot for edges on 2 screen headsets
+			local ratioX = workspace.CurrentCamera.ViewportSize.X * 2.3 / VR_PANEL_SIZE
+			local ratioY = workspace.CurrentCamera.ViewportSize.Y * 2.3 / VR_PANEL_SIZE
+			
+			VRBlur.Size = UDim2.fromScale(ratioX, ratioY)
+			VRBlur.BackgroundTransparency = 1
+			VRBlur.Active = true
+			VRBlur.ScaleType = Enum.ScaleType.Stretch
+		end
+		
+		VRBlur.Visible = true
+		VRBlur.ImageTransparency = 0
+		self.VREdgeBlurTimer = VR_SCREEN_EGDE_BLEND_TIME
+	end
+	
+	function VRBaseCamera:UpdateEdgeBlur(player, timeDelta)
+		local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
+		local VRBlur = nil
+		if VRScreen then
+			VRBlur = VRScreen:FindFirstChild("VRBlur")
+		end
+		
+		if VRBlur then
+			if self.VREdgeBlurTimer > 0 then
+				self.VREdgeBlurTimer = self.VREdgeBlurTimer - timeDelta
+				
+				local VRScreen = player.PlayerGui:FindFirstChild("VRBlurScreen")
+				if VRScreen then
+					local VRBlur = VRScreen:FindFirstChild("VRBlur")
+					if VRBlur then
+						VRBlur.ImageTransparency = 1.0 - math.clamp(self.VREdgeBlurTimer, 0.01,
+							VR_SCREEN_EGDE_BLEND_TIME) * (1/VR_SCREEN_EGDE_BLEND_TIME)
+					end
+				end
+			else
+				VRBlur.Visible = false
+			end
+		end
+	end
+	
+	function VRBaseCamera:GetCameraHeight()
+		if not self.inFirstPerson then
+			return math.sin(VR_ANGLE) * self.currentSubjectDistance
+		end
+		return 0
+	end
+	
+	function VRBaseCamera:GetSubjectCFrame(): CFrame
+		local result = BaseCamera.GetSubjectCFrame(self)
+		local camera = workspace.CurrentCamera
+		local cameraSubject = camera and camera.CameraSubject
+		
+		if not cameraSubject then
+			return result
+		end
+		
+		-- new VR system overrides
+		if cameraSubject:IsA("Humanoid") then
+			local humanoid = cameraSubject
+			local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
+			
+			if humanoidIsDead and humanoid == self.lastSubject then
+				result = self.lastSubjectCFrame
+			end
+		end
+		
+		if result then
+			self.lastSubjectCFrame = result
+		end
+		
+		return result
+	end
+	
+	function VRBaseCamera:GetSubjectPosition(): Vector3?
+		local result = BaseCamera.GetSubjectPosition(self)
+		
+		-- new VR system overrides
+		local camera = workspace.CurrentCamera
+		local cameraSubject = camera and camera.CameraSubject
+		if cameraSubject then
+			if cameraSubject:IsA("Humanoid") then
+				local humanoid = cameraSubject
+				local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
+				
+				if  humanoidIsDead and humanoid == self.lastSubject then
+					result = self.lastSubjectPosition
+				end
+			elseif cameraSubject:IsA("VehicleSeat") then
+				local offset = VR_SEAT_OFFSET
+				result = cameraSubject.CFrame.p + cameraSubject.CFrame:vectorToWorldSpace(offset)
+			end
+		else
+			return nil
+		end
+		
+		self.lastSubjectPosition = result
+		
+		return result
+	end
+	
+end
+
+local controlModule
+local VRCamera = setmetatable({}, VRBaseCamera) do
+	VRCamera.__index = VRCamera
+	
+	--[[
+		VRCamera - Roblox VR camera control module
+		2021 Roblox VR
+	--]]
+	
+	-- Local private variables and constants
+	local CAMERA_BLACKOUT_TIME = 0.1
+	local FP_ZOOM = 0.5
+	
+	local FFlagUserFlagEnableVRUpdate3 = getFastFlag("UserFlagEnableVRUpdate3")
+	
+	function VRCamera.new()
+		local self = setmetatable(VRBaseCamera.new(), VRCamera)
+		
+		self.lastUpdate = tick()
+		self:Reset()
+		
+		return self
+	end
+	
+	function VRCamera:Reset()
+		self.needsReset = true
+		self.needsBlackout = true
+		self.motionDetTime = 0.0
+		self.blackOutTimer = 0
+		self.lastCameraResetPosition = nil
+		self.stepRotateTimeout = 0.0
+		self.cameraOffsetRotation = 0
+		self.cameraOffsetRotationDiscrete = 0
+	end
+	
+	function VRCamera:Update(timeDelta)
+		local camera = workspace.CurrentCamera
+		local newCameraCFrame = camera.CFrame
+		local newCameraFocus = camera.Focus
+		
+		local humanoid = self:GetHumanoid()
+		local cameraSubject = camera.CameraSubject
+		
+		if self.lastUpdate == nil or timeDelta > 1 then
+			self.lastCameraTransform = nil
+		end
+		
+		self:StepZoom()
+		-- update fullscreen effects
+		self:UpdateFadeFromBlack(timeDelta)
+		self:UpdateEdgeBlur(localPlayer, timeDelta)
+		
+		local lastSubjPos = self.lastSubjectPosition
+		local subjectPosition: Vector3 = self:GetSubjectPosition()
+		-- transition from another camera or from spawn
+		if self.needsBlackout then 
+			self:StartFadeFromBlack()
+			
+			local dt = math.clamp(timeDelta, 0.0001, 0.1)
+			self.blackOutTimer += dt
+			if self.blackOutTimer > CAMERA_BLACKOUT_TIME and game:IsLoaded() then
+				self.needsBlackout = false
+				self.needsReset = true
+			end
+		end
+		
+		if subjectPosition and camera then
+			newCameraFocus = self:GetVRFocus(subjectPosition, timeDelta)
+			
+			if self:IsInFirstPerson() then
+				-- update camera CFrame
+				newCameraCFrame, newCameraFocus = self:UpdateFirstPersonTransform(
+					timeDelta,newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
+			else -- 3rd person
+				-- update camera CFrame
+				newCameraCFrame, newCameraFocus = self:UpdateThirdPersonTransform(
+					timeDelta, newCameraCFrame, newCameraFocus, lastSubjPos, subjectPosition)
+			end
+			
+			self.lastCameraTransform = newCameraCFrame
+			self.lastCameraFocus = newCameraFocus
+		end
+		
+		self.lastUpdate = tick()
+		return newCameraCFrame, newCameraFocus
+	end
+	
+	function VRCamera:UpdateFirstPersonTransform(timeDelta, newCameraCFrame,
+		newCameraFocus, lastSubjPos, subjectPosition)
+		
+		-- transition from TP to FP
+		if self.needsReset then
+			self:StartFadeFromBlack()
+			self.needsReset = false
+			self.stepRotateTimeout = 0.25
+			self.VRCameraFocusFrozen = true
+			self.cameraOffsetRotation = 0
+			self.cameraOffsetRotationDiscrete = 0
+		end
+		
+		-- blur screen edge during movement
+		local subjectDelta = lastSubjPos - subjectPosition
+		if subjectDelta.magnitude > 0.01 then
+			self:StartVREdgeBlur(localPlayer)
+		end
+		-- straight view, not angled down
+		local cameraFocusP = newCameraFocus.p
+		local cameraLookVector = self:GetCameraLookVector()
+		cameraLookVector = Vector3.new(cameraLookVector.X, 0, cameraLookVector.Z).Unit
+		
+		if self.stepRotateTimeout > 0 then
+			self.stepRotateTimeout -= timeDelta
+		end
+		
+		-- step rotate in 1st person
+		local rotateInput = CameraInput.getRotation()
+		local yawDelta = 0
+		if FFlagUserFlagEnableVRUpdate3 and UserGameSettings.VRSmoothRotationEnabled then
+			yawDelta = rotateInput.X
+		else
+			if self.stepRotateTimeout <= 0.0 and math.abs(rotateInput.X) > 0.03 then
+				yawDelta = 0.5
+				if rotateInput.X < 0 then
+					yawDelta = -0.5
+				end
+				self.needsReset = true
+			end
+		end
+		
+		local newLookVector = self:CalculateNewLookVectorFromArg(
+			cameraLookVector,
+			Vector2.new(yawDelta, 0)
+		)
+		
+		newCameraCFrame = CFrame.new(
+			cameraFocusP - (FP_ZOOM * newLookVector),
+			cameraFocusP
+		)
+		
+		return newCameraCFrame, newCameraFocus
+	end
+	
+	function VRCamera:UpdateThirdPersonTransform(timeDelta, newCameraCFrame, newCameraFocus,
+		lastSubjPos, subjectPosition)
+		
+		local zoom = self:GetCameraToSubjectDistance()
+		if zoom < 0.5 then
+			zoom = 0.5
+		end
+		
+		if lastSubjPos ~= nil and self.lastCameraFocus ~= nil then
+			-- compute delta of subject since last update
+			local subjectDelta = lastSubjPos - subjectPosition
+			local moveVector = controlModule:GetMoveVector()
+			
+			-- is the subject still moving?
+			local isMoving = subjectDelta.magnitude > 0.01 or moveVector.magnitude > 0.01
+			if isMoving then
+				self.motionDetTime = 0.1
+			end
+			
+			self.motionDetTime = self.motionDetTime - timeDelta
+			if self.motionDetTime > 0 then
+				isMoving = true
+			end
+			
+			if isMoving and not self.needsReset then
+				-- if subject moves keep old camera focus
+				newCameraFocus = self.lastCameraFocus
+				
+				-- if the focus subject stopped, time to reset the camera
+				self.VRCameraFocusFrozen = true
+			else
+				local subjectMoved = self.lastCameraResetPosition == nil
+					or (subjectPosition - self.lastCameraResetPosition).Magnitude > 1
+				
+				-- compute offset for 3rd person camera rotation
+				local rotateInput = CameraInput.getRotation()
+				local userCameraPan = FFlagUserFlagEnableVRUpdate3 and rotateInput ~= Vector2.new()
+				local panUpdate = false
+				if userCameraPan then
+					if rotateInput.X ~= 0 then
+						local tempRotation = self.cameraOffsetRotation + rotateInput.X;
+						if tempRotation < -math.pi then
+							tempRotation = math.pi - (tempRotation + math.pi) 
+						else
+							if tempRotation > math.pi then
+								tempRotation = -math.pi + (tempRotation - math.pi) 
+							end
+						end
+						self.cameraOffsetRotation = math.clamp(tempRotation, -math.pi, math.pi)
+						if UserGameSettings.VRSmoothRotationEnabled then
+							self.cameraOffsetRotationDiscrete = self.cameraOffsetRotation
+							
+							-- get player facing direction
+							local humanoid = self:GetHumanoid()
+							local forwardVector = humanoid.Torso
+								and humanoid.Torso.CFrame.lookVector
+								or Vector3.new(1, 0, 0)
+							
+							-- adjust camera height
+							local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
+							local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
+							
+							-- compute new cframe at height level to subject
+							local lookAtPos = Vector3.new(
+								newCameraFocus.Position.X,
+								newCameraPos.Y,
+								newCameraFocus.Position.Z
+							)
+							
+							local tempCF = CFrame.new(newCameraPos, lookAtPos)
+							tempCF *= CFrame.fromAxisAngle(
+								Vector3.new(0, 1, 0),
+								self.cameraOffsetRotationDiscrete
+							)
+							
+							newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
+							
+							newCameraCFrame = CFrame.new(newCameraPos, lookAtPos)
+						else
+							local tempRotDisc = math.floor(self.cameraOffsetRotation * 12 / 12)
+							if tempRotDisc ~= self.cameraOffsetRotationDiscrete then
+								self.cameraOffsetRotationDiscrete = tempRotDisc
+								panUpdate = true
+							end
+						end
+					end
+				end
+				
+				-- recenter the camera on teleport
+				if (self.VRCameraFocusFrozen and subjectMoved) or self.needsReset or panUpdate then
+					if not panUpdate then
+						self.cameraOffsetRotationDiscrete = 0
+						self.cameraOffsetRotation = 0
+					end
+					
+					VRService:RecenterUserHeadCFrame()
+					
+					self.VRCameraFocusFrozen = false
+					self.needsReset = false
+					self.lastCameraResetPosition = subjectPosition
+					
+					self:ResetZoom()
+					self:StartFadeFromBlack()
+					
+					-- get player facing direction
+					local humanoid = self:GetHumanoid()
+					local forwardVector = humanoid.Torso
+						and humanoid.Torso.CFrame.lookVector
+						or Vector3.new(1, 0, 0)
+					
+					-- adjust camera height
+					local vecToCameraAtHeight = Vector3.new(forwardVector.X, 0, forwardVector.Z)
+					local newCameraPos = newCameraFocus.Position - vecToCameraAtHeight * zoom
+					-- compute new cframe at height level to subject
+					local lookAtPos = Vector3.new(newCameraFocus.Position.X, newCameraPos.Y, newCameraFocus.Position.Z)
+					
+					if FFlagUserFlagEnableVRUpdate3 and self.cameraOffsetRotation ~= 0 then
+						local tempCF = CFrame.new(newCameraPos, lookAtPos)
+						tempCF *= CFrame.fromAxisAngle(Vector3.new(0,1,0), self.cameraOffsetRotationDiscrete)
+						newCameraPos = lookAtPos - (tempCF.LookVector * (lookAtPos - newCameraPos).Magnitude)
+					end
+					
+					newCameraCFrame = CFrame.new(newCameraPos, lookAtPos)
+				end
+			end
+		end
+		
+		return newCameraCFrame, newCameraFocus
+	end
+	
+	function VRCamera:EnterFirstPerson()
+		self.inFirstPerson = true
+		self:UpdateMouseBehavior()
+	end
+	
+	function VRCamera:LeaveFirstPerson()
+		self.inFirstPerson = false
+		self.needsReset = true
+		self:UpdateMouseBehavior()
+		
+		if self.VRBlur then
+			self.VRBlur.Visible = false
+		end
+	end
+	
+end
+
 local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 	VRVehicleCamera.__index = VRVehicleCamera
 	
@@ -5678,7 +5263,417 @@ local VRVehicleCamera = setmetatable({}, VRBaseCamera) do
 end
 
 
+local MouseLockController = {} do
+	MouseLockController.__index = MouseLockController
+	
+	--[[
+		MouseLockController - Replacement for ShiftLockController, manages use of mouse-locked mode
+		2018 Camera Update - AllYourBlox
+	--]]
+	
+	--[[ Constants ]]--
+	local DEFAULT_MOUSE_LOCK_CURSOR = "rbxasset://textures/MouseLockedCursor.png"
+	
+	local CONTEXT_ACTION_NAME = "MouseLockSwitchAction"
+	local MOUSELOCK_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
+	
+	--[[ Services ]]--
+	local Settings = userSettings	-- ignore warning
+	local GameSettings = Settings.GameSettings
+	
+	function MouseLockController.new()
+		local self = setmetatable({}, MouseLockController)
+		
+		self.isMouseLocked = false
+		self.savedMouseCursor = nil
+		self.boundKeys = {Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift} -- defaults
+		
+		self.mouseLockToggledEvent = Instance.new("BindableEvent")
+		
+		local boundKeysObj = script:FindFirstChild("BoundKeys")
+		if (not boundKeysObj) or (not boundKeysObj:IsA("StringValue")) then
+			-- If object with correct name was found, but it's not a StringValue, destroy and replace
+			if boundKeysObj then
+				boundKeysObj:Destroy()
+			end
+			
+			boundKeysObj = Instance.new("StringValue")
+			-- Luau FIXME: should be able to infer from assignment above that boundKeysObj is not nil
+			assert(boundKeysObj, "")
+			boundKeysObj.Name = "BoundKeys"
+			boundKeysObj.Value = "LeftShift,RightShift"
+			boundKeysObj.Parent = script
+		end
+		
+		if boundKeysObj then
+			boundKeysObj.Changed:Connect(function(value)
+				self:OnBoundKeysObjectChanged(value)
+			end)
+			self:OnBoundKeysObjectChanged(boundKeysObj.Value) -- Initial setup call
+		end
+		
+		-- Watch for changes to user's ControlMode and ComputerMovementMode settings and update the feature availability accordingly
+		GameSettings.Changed:Connect(function(property)
+			if property == "ControlMode" or property == "ComputerMovementMode" then
+				self:UpdateMouseLockAvailability()
+			end
+		end)
+		
+		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
+		localPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
+			self:UpdateMouseLockAvailability()
+		end)
+		
+		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
+		localPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
+			self:UpdateMouseLockAvailability()
+		end)
+		
+		self:UpdateMouseLockAvailability()
+		
+		return self
+	end
+	
+	function MouseLockController:GetIsMouseLocked()
+		return self.isMouseLocked
+	end
+	
+	function MouseLockController:GetBindableToggleEvent()
+		return self.mouseLockToggledEvent.Event
+	end
+	
+	function MouseLockController:GetMouseLockOffset()
+		local offsetValueObj: Vector3Value = script:FindFirstChild("CameraOffset") :: Vector3Value
+		if offsetValueObj and offsetValueObj:IsA("Vector3Value") then
+			return offsetValueObj.Value
+		else
+			-- If CameraOffset object was found but not correct type, destroy
+			if offsetValueObj then
+				offsetValueObj:Destroy()
+			end
+			offsetValueObj = Instance.new("Vector3Value")
+			assert(offsetValueObj, "")
+			offsetValueObj.Name = "CameraOffset"
+			offsetValueObj.Value = Vector3.new(1.75, 0, 0) -- Legacy Default Value
+			offsetValueObj.Parent = script
+		end
+		
+		if offsetValueObj and offsetValueObj.Value then
+			return offsetValueObj.Value
+		end
+		
+		return Vector3.new(1.75,0,0)
+	end
+	
+	function MouseLockController:UpdateMouseLockAvailability()
+		local devAllowsMouseLock = localPlayer.DevEnableMouseLock
+		local devMovementModeIsScriptable = localPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
+		local userHasMouseLockModeEnabled = GameSettings.ControlMode == Enum.ControlMode.MouseLockSwitch
+		local userHasClickToMoveEnabled =  GameSettings.ComputerMovementMode == Enum.ComputerMovementMode.ClickToMove
+		local MouseLockAvailable = devAllowsMouseLock
+			and userHasMouseLockModeEnabled
+			and not userHasClickToMoveEnabled
+			and not devMovementModeIsScriptable
+		
+		if MouseLockAvailable~=self.enabled then
+			self:EnableMouseLock(MouseLockAvailable)
+		end
+	end
+	
+	function MouseLockController:OnBoundKeysObjectChanged(newValue: string)
+		-- Overriding defaults, note: possibly with nothing at
+		-- all if boundKeysObj.Value is "" or contains invalid values
+		self.boundKeys = {}
+		
+		for token in string.gmatch(newValue,"[^%s,]+") do
+			for _, keyEnum in pairs(Enum.KeyCode:GetEnumItems()) do
+				if token == keyEnum.Name then
+					table.insert(self.boundKeys, keyEnum)
+					break
+				end
+			end
+		end
+		
+		self:UnbindContextActions()
+		self:BindContextActions()
+	end
+	
+	--[[ Local Functions ]]--
+	function MouseLockController:OnMouseLockToggled()
+		self.isMouseLocked = not self.isMouseLocked
+		
+		if self.isMouseLocked then
+			local cursorImageValueObj: StringValue? = script:FindFirstChild("CursorImage") :: StringValue?
+			if cursorImageValueObj and cursorImageValueObj:IsA("StringValue") and cursorImageValueObj.Value then
+				CameraUtils.setMouseIconOverride(cursorImageValueObj.Value)
+			else
+				if cursorImageValueObj then
+					cursorImageValueObj:Destroy()
+				end
+				cursorImageValueObj = Instance.new("StringValue")
+				assert(cursorImageValueObj, "")
+				cursorImageValueObj.Name = "CursorImage"
+				cursorImageValueObj.Value = DEFAULT_MOUSE_LOCK_CURSOR
+				cursorImageValueObj.Parent = script
+				CameraUtils.setMouseIconOverride(DEFAULT_MOUSE_LOCK_CURSOR)
+			end
+		else
+			CameraUtils.restoreMouseIcon()
+		end
+		
+		self.mouseLockToggledEvent:Fire()
+	end
+	
+	function MouseLockController:DoMouseLockSwitch(name, state, input)
+		if state == Enum.UserInputState.Begin then
+			self:OnMouseLockToggled()
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end
+	
+	function MouseLockController:BindContextActions()
+		local functionToBind = function(name, state, input)
+			return self:DoMouseLockSwitch(name, state, input)
+		end
+		
+		ContextActionService:BindActionAtPriority(CONTEXT_ACTION_NAME,
+			functionToBind, false, MOUSELOCK_ACTION_PRIORITY, unpack(self.boundKeys))
+	end
+	
+	function MouseLockController:UnbindContextActions()
+		ContextActionService:UnbindAction(CONTEXT_ACTION_NAME)
+	end
+	
+	function MouseLockController:IsMouseLocked(): boolean
+		return self.enabled and self.isMouseLocked
+	end
+	
+	function MouseLockController:EnableMouseLock(enable: boolean)
+		if enable ~= self.enabled then
+			
+			self.enabled = enable
+			
+			if self.enabled then
+				-- Enabling the mode
+				self:BindContextActions()
+			else
+				-- Disabling
+				-- Restore mouse cursor
+				CameraUtils.restoreMouseIcon()
+				
+				self:UnbindContextActions()
+				
+				-- If the mode is disabled while being used, fire the event to toggle it off
+				if self.isMouseLocked then
+					self.mouseLockToggledEvent:Fire()
+				end
+				
+				self.isMouseLocked = false
+			end
+			
+		end
+	end
+	
+end
 
+local TransparencyController = {} do
+	TransparencyController.__index = TransparencyController
+	
+	--[[
+		TransparencyController - Manages transparency of player character at close camera-to-subject distances
+		2018 Camera Update - AllYourBlox
+	--]]
+	
+	local MAX_TWEEN_RATE = 2.8 -- per second
+	
+	function TransparencyController.new()
+		local self = setmetatable({}, TransparencyController)
+		
+		self.transparencyDirty = false
+		self.enabled = false
+		self.lastTransparency = nil
+		
+		self.descendantAddedConn, self.descendantRemovingConn = nil, nil
+		self.toolDescendantAddedConns = {}
+		self.toolDescendantRemovingConns = {}
+		self.cachedParts = {}
+		
+		return self
+	end
+	
+	
+	function TransparencyController:HasToolAncestor(object: Instance)
+		if object.Parent == nil then return false end
+		assert(object.Parent, "")
+		return object.Parent:IsA("Tool") or self:HasToolAncestor(object.Parent)
+	end
+	
+	function TransparencyController:IsValidPartToModify(part: BasePart)
+		if part:IsA("BasePart") or part:IsA("Decal") then
+			return not self:HasToolAncestor(part)
+		end
+		return false
+	end
+	
+	function TransparencyController:CachePartsRecursive(object)
+		if object then
+			if self:IsValidPartToModify(object) then
+				self.cachedParts[object] = true
+				self.transparencyDirty = true
+			end
+			for _, child in pairs(object:GetChildren()) do
+				self:CachePartsRecursive(child)
+			end
+		end
+	end
+	
+	function TransparencyController:TeardownTransparency()
+		for child, _ in pairs(self.cachedParts) do
+			child.LocalTransparencyModifier = 0
+		end
+		self.cachedParts = {}
+		self.transparencyDirty = true
+		self.lastTransparency = nil
+		
+		if self.descendantAddedConn then
+			self.descendantAddedConn:disconnect()
+			self.descendantAddedConn = nil
+		end
+		if self.descendantRemovingConn then
+			self.descendantRemovingConn:disconnect()
+			self.descendantRemovingConn = nil
+		end
+		for object, conn in pairs(self.toolDescendantAddedConns) do
+			conn:Disconnect()
+			self.toolDescendantAddedConns[object] = nil
+		end
+		for object, conn in pairs(self.toolDescendantRemovingConns) do
+			conn:Disconnect()
+			self.toolDescendantRemovingConns[object] = nil
+		end
+	end
+	
+	function TransparencyController:SetupTransparency(character)
+		self:TeardownTransparency()
+		
+		if self.descendantAddedConn then self.descendantAddedConn:disconnect() end
+		self.descendantAddedConn = character.DescendantAdded:Connect(function(object)
+			-- This is a part we want to invisify
+			if self:IsValidPartToModify(object) then
+				self.cachedParts[object] = true
+				self.transparencyDirty = true
+				-- There is now a tool under the character
+			elseif object:IsA("Tool") then
+				if self.toolDescendantAddedConns[object] then
+					self.toolDescendantAddedConns[object]:Disconnect()
+				end
+				
+				self.toolDescendantAddedConns[object] =
+					object.DescendantAdded:Connect(function(toolChild)
+						self.cachedParts[toolChild] = nil
+						if toolChild:IsA("BasePart") or toolChild:IsA("Decal") then
+						-- Reset the transparency
+						toolChild.LocalTransparencyModifier = 0
+					end
+					end)
+				
+				if self.toolDescendantRemovingConns[object] then
+					self.toolDescendantRemovingConns[object]:Disconnect()
+				end
+				
+				self.toolDescendantRemovingConns[object] =
+					object.DescendantRemoving:Connect(function(formerToolChild)
+						wait() -- wait for new parent
+						if character
+						and formerToolChild
+						and formerToolChild:IsDescendantOf(character) then
+						if self:IsValidPartToModify(formerToolChild) then
+							self.cachedParts[formerToolChild] = true
+							self.transparencyDirty = true
+						end
+					end
+					end)
+				
+			end
+		end)
+		
+		if self.descendantRemovingConn then
+			self.descendantRemovingConn:Disconnect()
+		end
+		
+		self.descendantRemovingConn =
+			character.DescendantRemoving:Connect(function(object)
+				if self.cachedParts[object] then
+				self.cachedParts[object] = nil
+				-- Reset the transparency
+				object.LocalTransparencyModifier = 0
+			end
+			end)
+		
+		self:CachePartsRecursive(character)
+	end
+	
+	
+	function TransparencyController:Enable(enable: boolean)
+		if self.enabled ~= enable then
+			self.enabled = enable
+		end
+	end
+	
+	function TransparencyController:SetSubject(subject)
+		local character
+		
+		if subject and subject:IsA("Humanoid") then
+			character = subject.Parent
+		end
+		
+		if subject and subject:IsA("VehicleSeat") and subject.Occupant then
+			character = subject.Occupant.Parent
+		end
+		
+		if character then
+			self:SetupTransparency(character)
+		else
+			self:TeardownTransparency()
+		end
+	end
+	
+	function TransparencyController:Update(dt)
+		local currentCamera = workspace.CurrentCamera
+		
+		if currentCamera and self.enabled then
+			-- calculate goal transparency based on distance
+			local distance = (currentCamera.Focus.p - currentCamera.CoordinateFrame.p).Magnitude
+			local transparency = (distance < 2) and (1.0 - (distance - 0.5) / 1.5) or 0 -- (7 - distance) / 5
+			if transparency < 0.5 then -- too far, don't control transparency
+				transparency = 0
+			end
+			
+			-- tween transparency if the goal is not fully transparent and the subject was not fully transparent last frame
+			if self.lastTransparency and transparency < 1 and self.lastTransparency < 0.95 then
+				local deltaTransparency = transparency - self.lastTransparency
+				local maxDelta = MAX_TWEEN_RATE * dt
+				deltaTransparency = math.clamp(deltaTransparency, -maxDelta, maxDelta)
+				transparency = self.lastTransparency + deltaTransparency
+			else
+				self.transparencyDirty = true
+			end
+			
+			transparency = math.clamp(CameraUtils.Round(transparency, 2), 0, 1)
+			
+			-- update transparencies 
+			if self.transparencyDirty or self.lastTransparency ~= transparency then
+				for child, _ in pairs(self.cachedParts) do
+					child.LocalTransparencyModifier = transparency
+				end
+				self.transparencyDirty = false
+				self.lastTransparency = transparency
+			end
+		end
+	end
+	
+end
 
 
 local CameraModule = {} do
@@ -6238,9 +6233,6 @@ local CameraModule = {} do
 end
 
 
-
-
-
 local BaseCharacterController = {} do
 	BaseCharacterController.__index = BaseCharacterController
 	
@@ -6281,6 +6273,1376 @@ local BaseCharacterController = {} do
 	function BaseCharacterController:Enable(enable: boolean): boolean
 		error("BaseCharacterController:Enable must be overridden in derived classes and should not be called.")
 		return false
+	end
+	
+end
+
+
+local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
+	DynamicThumbstick.__index = DynamicThumbstick
+	
+	local TOUCH_CONTROLS_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
+	
+	local DYNAMIC_THUMBSTICK_ACTION_NAME = "DynamicThumbstickAction"
+	local DYNAMIC_THUMBSTICK_ACTION_PRIORITY = Enum.ContextActionPriority.High.Value
+	
+	local MIDDLE_TRANSPARENCIES = {
+		1 - 0.89,
+		1 - 0.70,
+		1 - 0.60,
+		1 - 0.50,
+		1 - 0.40,
+		1 - 0.30,
+		1 - 0.25
+	}
+	
+	local NUM_MIDDLE_IMAGES = #MIDDLE_TRANSPARENCIES
+	
+	local FADE_IN_OUT_BACKGROUND = true
+	local FADE_IN_OUT_MAX_ALPHA = 0.35
+	
+	local FADE_IN_OUT_HALF_DURATION_DEFAULT = 0.3
+	local FADE_IN_OUT_BALANCE_DEFAULT = 0.5
+	local ThumbstickFadeTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	
+	function DynamicThumbstick.new()
+		local self = setmetatable(BaseCharacterController.new() :: any, DynamicThumbstick)
+		
+		self.moveTouchObject = nil
+		self.moveTouchLockedIn = false
+		self.moveTouchFirstChanged = false
+		self.moveTouchStartPosition = nil
+		
+		self.startImage = nil
+		self.endImage = nil
+		self.middleImages = {}
+		
+		self.startImageFadeTween = nil
+		self.endImageFadeTween = nil
+		self.middleImageFadeTweens = {}
+		
+		self.isFirstTouch = true
+		
+		self.thumbstickFrame = nil
+		
+		self.onRenderSteppedConn = nil
+		
+		self.fadeInAndOutBalance = FADE_IN_OUT_BALANCE_DEFAULT
+		self.fadeInAndOutHalfDuration = FADE_IN_OUT_HALF_DURATION_DEFAULT
+		self.hasFadedBackgroundInPortrait = false
+		self.hasFadedBackgroundInLandscape = false
+		
+		self.tweenInAlphaStart = nil
+		self.tweenOutAlphaStart = nil
+		
+		return self
+	end
+	
+	-- Note: Overrides base class GetIsJumping with get-and-clear behavior to do a single jump
+	-- rather than sustained jumping. This is only to preserve the current behavior through the refactor.
+	function DynamicThumbstick:GetIsJumping()
+		local wasJumping = self.isJumping
+		self.isJumping = false
+		return wasJumping
+	end
+	
+	function DynamicThumbstick:Enable(enable: boolean?, uiParentFrame): boolean?
+		if enable == nil then return false end			-- If nil, return false (invalid argument)
+		enable = enable and true or false				-- Force anything non-nil to boolean before comparison
+		if self.enabled == enable then return true end	-- If no state change, return true indicating already in requested state
+		
+		if enable then
+			-- Enable
+			if not self.thumbstickFrame then
+				self:Create(uiParentFrame)
+			end
+			
+			self:BindContextActions()
+		else
+			ContextActionService:UnbindAction(DYNAMIC_THUMBSTICK_ACTION_NAME)
+			-- Disable
+			self:OnInputEnded() -- Cleanup
+		end
+		
+		self.enabled = enable
+		self.thumbstickFrame.Visible = enable
+		return nil
+	end
+	
+	-- Was called OnMoveTouchEnded in previous version
+	function DynamicThumbstick:OnInputEnded()
+		self.moveTouchObject = nil
+		self.moveVector = Vector3.zero
+		self:FadeThumbstick(false)
+	end
+	
+	function DynamicThumbstick:FadeThumbstick(visible: boolean?)
+		if not visible and self.moveTouchObject then
+			return
+		end
+		if self.isFirstTouch then return end
+		
+		if self.startImageFadeTween then
+			self.startImageFadeTween:Cancel()
+		end
+		if self.endImageFadeTween then
+			self.endImageFadeTween:Cancel()
+		end
+		for i = 1, #self.middleImages do
+			if self.middleImageFadeTweens[i] then
+				self.middleImageFadeTweens[i]:Cancel()
+			end
+		end
+		
+		if visible then
+			self.startImageFadeTween = TweenService:Create(
+				self.startImage,
+				ThumbstickFadeTweenInfo,
+				{ ImageTransparency = 0 }
+			)
+			self.startImageFadeTween:Play()
+			
+			self.endImageFadeTween = TweenService:Create(
+				self.endImage,
+				ThumbstickFadeTweenInfo,
+				{ ImageTransparency = 0.2 }
+			)
+			self.endImageFadeTween:Play()
+			
+			for i = 1, #self.middleImages do
+				self.middleImageFadeTweens[i] = TweenService:Create(
+					self.middleImages[i],
+					ThumbstickFadeTweenInfo,
+					{ ImageTransparency = MIDDLE_TRANSPARENCIES[i] }
+				)
+				self.middleImageFadeTweens[i]:Play()
+			end
+		else
+			self.startImageFadeTween = TweenService:Create(
+				self.startImage,
+				ThumbstickFadeTweenInfo, 
+				{ ImageTransparency = 1 }
+			)
+			self.startImageFadeTween:Play()
+			
+			self.endImageFadeTween = TweenService:Create(
+				self.endImage,
+				ThumbstickFadeTweenInfo,
+				{ ImageTransparency = 1 }
+			)
+			self.endImageFadeTween:Play()
+			
+			for i = 1, #self.middleImages do
+				self.middleImageFadeTweens[i] = TweenService:Create(
+					self.middleImages[i],
+					ThumbstickFadeTweenInfo,
+					{ ImageTransparency = 1 }
+				)
+				self.middleImageFadeTweens[i]:Play()
+			end
+		end
+	end
+	
+	function DynamicThumbstick:FadeThumbstickFrame(fadeDuration: number, fadeRatio: number)
+		self.fadeInAndOutHalfDuration = fadeDuration * 0.5
+		self.fadeInAndOutBalance = fadeRatio
+		self.tweenInAlphaStart = tick()
+	end
+	
+	function DynamicThumbstick:InputInFrame(inputObject: InputObject)
+		local frameCornerTopLeft: Vector2 = self.thumbstickFrame.AbsolutePosition
+		local frameCornerBottomRight = frameCornerTopLeft + self.thumbstickFrame.AbsoluteSize
+		local inputPosition = inputObject.Position
+		if inputPosition.X >= frameCornerTopLeft.X and inputPosition.Y >= frameCornerTopLeft.Y then
+			if inputPosition.X <= frameCornerBottomRight.X and inputPosition.Y <= frameCornerBottomRight.Y then
+				return true
+			end
+		end
+		return false
+	end
+	
+	function DynamicThumbstick:DoFadeInBackground()
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		local hasFadedBackgroundInOrientation = false
+		
+		-- only fade in/out the background once per orientation
+		if playerGui then
+			if playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft or
+				playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight then
+				hasFadedBackgroundInOrientation = self.hasFadedBackgroundInLandscape
+				self.hasFadedBackgroundInLandscape = true
+			elseif playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait then
+				hasFadedBackgroundInOrientation = self.hasFadedBackgroundInPortrait
+				self.hasFadedBackgroundInPortrait = true
+			end
+		end
+		
+		if not hasFadedBackgroundInOrientation then
+			self.fadeInAndOutHalfDuration = FADE_IN_OUT_HALF_DURATION_DEFAULT
+			self.fadeInAndOutBalance = FADE_IN_OUT_BALANCE_DEFAULT
+			self.tweenInAlphaStart = tick()
+		end
+	end
+	
+	function DynamicThumbstick:DoMove(direction: Vector3)
+		local currentMoveVector: Vector3 = direction
+		
+		-- Scaled Radial Dead Zone
+		local inputAxisMagnitude: number = currentMoveVector.Magnitude
+		if inputAxisMagnitude < self.radiusOfDeadZone then
+			currentMoveVector = Vector3.zero
+		else
+			currentMoveVector = currentMoveVector.Unit*(
+				1 - math.max(0, (self.radiusOfMaxSpeed - currentMoveVector.Magnitude)/self.radiusOfMaxSpeed)
+			)
+			currentMoveVector = Vector3.new(currentMoveVector.X, 0, currentMoveVector.Y)
+		end
+		
+		self.moveVector = currentMoveVector
+	end
+	
+	
+	function DynamicThumbstick:LayoutMiddleImages(startPos: Vector3, endPos: Vector3)
+		local startDist = (self.thumbstickSize / 2) + self.middleSize
+		local vector = endPos - startPos
+		local distAvailable = vector.Magnitude - (self.thumbstickRingSize / 2) - self.middleSize
+		local direction = vector.Unit
+		
+		local distNeeded = self.middleSpacing * NUM_MIDDLE_IMAGES
+		local spacing = self.middleSpacing
+		
+		if distNeeded < distAvailable then
+			spacing = distAvailable / NUM_MIDDLE_IMAGES
+		end
+		
+		for i = 1, NUM_MIDDLE_IMAGES do
+			local image = self.middleImages[i]
+			local distWithout = startDist + (spacing * (i - 2))
+			local currentDist = startDist + (spacing * (i - 1))
+			
+			if distWithout < distAvailable then
+				local pos = endPos - direction * currentDist
+				local exposedFraction = math.clamp(1 - ((currentDist - distAvailable) / spacing), 0, 1)
+				
+				image.Visible = true
+				image.Position = UDim2.new(0, pos.X, 0, pos.Y)
+				image.Size = UDim2.new(0, self.middleSize * exposedFraction, 0, self.middleSize * exposedFraction)
+			else
+				image.Visible = false
+			end
+		end
+	end
+	
+	function DynamicThumbstick:MoveStick(pos)
+		local vector2StartPosition = Vector2.new(self.moveTouchStartPosition.X, self.moveTouchStartPosition.Y)
+		local startPos = vector2StartPosition - self.thumbstickFrame.AbsolutePosition
+		local endPos = Vector2.new(pos.X, pos.Y) - self.thumbstickFrame.AbsolutePosition
+		self.endImage.Position = UDim2.new(0, endPos.X, 0, endPos.Y)
+		self:LayoutMiddleImages(startPos, endPos)
+	end
+	
+	function DynamicThumbstick:BindContextActions()
+		local function inputBegan(inputObject)
+			if self.moveTouchObject then
+				return Enum.ContextActionResult.Pass
+			end
+			
+			if not self:InputInFrame(inputObject) then
+				return Enum.ContextActionResult.Pass
+			end
+			
+			if self.isFirstTouch then
+				self.isFirstTouch = false
+				local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out,0,false,0)
+				TweenService:Create(self.startImage, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
+				TweenService:Create(
+					self.endImage,
+					tweenInfo,
+					{
+						Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize),
+						ImageColor3 = Color3.new(0,0,0)
+					}
+				):Play()
+			end
+			
+			self.moveTouchLockedIn = false
+			self.moveTouchObject = inputObject
+			self.moveTouchStartPosition = inputObject.Position
+			self.moveTouchFirstChanged = true
+			
+			if FADE_IN_OUT_BACKGROUND then
+				self:DoFadeInBackground()
+			end
+			
+			return Enum.ContextActionResult.Pass
+		end
+		
+		local function inputChanged(inputObject: InputObject)
+			if inputObject == self.moveTouchObject then
+				if self.moveTouchFirstChanged then
+					self.moveTouchFirstChanged = false
+					
+					local startPosVec2 = Vector2.new(
+						inputObject.Position.X - self.thumbstickFrame.AbsolutePosition.X,
+						inputObject.Position.Y - self.thumbstickFrame.AbsolutePosition.Y
+					)
+					self.startImage.Visible = true
+					self.startImage.Position = UDim2.new(0, startPosVec2.X, 0, startPosVec2.Y)
+					self.endImage.Visible = true
+					self.endImage.Position = self.startImage.Position
+					
+					self:FadeThumbstick(true)
+					self:MoveStick(inputObject.Position)
+				end
+				
+				self.moveTouchLockedIn = true
+				
+				local direction = Vector2.new(
+					inputObject.Position.X - self.moveTouchStartPosition.X,
+					inputObject.Position.Y - self.moveTouchStartPosition.Y
+				)
+				if math.abs(direction.X) > 0 or math.abs(direction.Y) > 0 then
+					self:DoMove(direction)
+					self:MoveStick(inputObject.Position)
+				end
+				return Enum.ContextActionResult.Sink
+			end
+			return Enum.ContextActionResult.Pass
+		end
+		
+		local function inputEnded(inputObject)
+			if inputObject == self.moveTouchObject then
+				self:OnInputEnded()
+				if self.moveTouchLockedIn then
+					return Enum.ContextActionResult.Sink
+				end
+			end
+			return Enum.ContextActionResult.Pass
+		end
+		
+		local function handleInput(actionName, inputState, inputObject)
+			if inputState == Enum.UserInputState.Begin then
+				return inputBegan(inputObject)
+			elseif inputState == Enum.UserInputState.Change then
+				return inputChanged(inputObject)
+			elseif inputState == Enum.UserInputState.End then
+				return inputEnded(inputObject)
+			elseif inputState == Enum.UserInputState.Cancel then
+				self:OnInputEnded()
+			end
+		end
+		
+		ContextActionService:BindActionAtPriority(
+			DYNAMIC_THUMBSTICK_ACTION_NAME,
+			handleInput,
+			false,
+			DYNAMIC_THUMBSTICK_ACTION_PRIORITY,
+			Enum.UserInputType.Touch)
+	end
+	
+	function DynamicThumbstick:Create(parentFrame: GuiBase2d)
+		if self.thumbstickFrame then
+			self.thumbstickFrame:Destroy()
+			self.thumbstickFrame = nil
+			if self.onRenderSteppedConn then
+				self.onRenderSteppedConn:Disconnect()
+				self.onRenderSteppedConn = nil
+			end
+		end
+		
+		self.thumbstickSize = 45
+		self.thumbstickRingSize = 20
+		self.middleSize = 10
+		self.middleSpacing = self.middleSize + 4
+		self.radiusOfDeadZone = 2
+		self.radiusOfMaxSpeed = 20
+		
+		local screenSize = parentFrame.AbsoluteSize
+		local isBigScreen = math.min(screenSize.X, screenSize.Y) > 500
+		if isBigScreen then
+			self.thumbstickSize *= 2
+			self.thumbstickRingSize *= 2
+			self.middleSize *= 2
+			self.middleSpacing *= 2
+			self.radiusOfDeadZone *= 2
+			self.radiusOfMaxSpeed *= 2
+		end
+		
+		local function layoutThumbstickFrame(portraitMode)
+			if portraitMode then
+				self.thumbstickFrame.Size = UDim2.new(1, 0, 0.4, 0)
+				self.thumbstickFrame.Position = UDim2.new(0, 0, 0.6, 0)
+			else
+				self.thumbstickFrame.Size = UDim2.new(0.4, 0, 2/3, 0)
+				self.thumbstickFrame.Position = UDim2.new(0, 0, 1/3, 0)
+			end
+		end
+		
+		self.thumbstickFrame = Instance.new("Frame")
+		self.thumbstickFrame.BorderSizePixel = 0
+		self.thumbstickFrame.Name = "DynamicThumbstickFrame"
+		self.thumbstickFrame.Visible = false
+		self.thumbstickFrame.BackgroundTransparency = 1.0
+		self.thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		self.thumbstickFrame.Active = false
+		layoutThumbstickFrame(false)
+		
+		self.startImage = Instance.new("ImageLabel")
+		self.startImage.Name = "ThumbstickStart"
+		self.startImage.Visible = true
+		self.startImage.BackgroundTransparency = 1
+		self.startImage.Image = TOUCH_CONTROLS_SHEET
+		self.startImage.ImageRectOffset = Vector2.new(1,1)
+		self.startImage.ImageRectSize = Vector2.new(144, 144)
+		self.startImage.ImageColor3 = Color3.new(0, 0, 0)
+		self.startImage.AnchorPoint = Vector2.new(0.5, 0.5)
+		self.startImage.Position = UDim2.new(0, self.thumbstickRingSize * 3.3, 1, -self.thumbstickRingSize  * 2.8)
+		self.startImage.Size = UDim2.new(0, self.thumbstickRingSize  * 3.7, 0, self.thumbstickRingSize  * 3.7)
+		self.startImage.ZIndex = 10
+		self.startImage.Parent = self.thumbstickFrame
+		
+		self.endImage = Instance.new("ImageLabel")
+		self.endImage.Name = "ThumbstickEnd"
+		self.endImage.Visible = true
+		self.endImage.BackgroundTransparency = 1
+		self.endImage.Image = TOUCH_CONTROLS_SHEET
+		self.endImage.ImageRectOffset = Vector2.new(1,1)
+		self.endImage.ImageRectSize =  Vector2.new(144, 144)
+		self.endImage.AnchorPoint = Vector2.new(0.5, 0.5)
+		self.endImage.Position = self.startImage.Position
+		self.endImage.Size = UDim2.new(0, self.thumbstickSize * 0.8, 0, self.thumbstickSize * 0.8)
+		self.endImage.ZIndex = 10
+		self.endImage.Parent = self.thumbstickFrame
+		
+		for i = 1, NUM_MIDDLE_IMAGES do
+			self.middleImages[i] = Instance.new("ImageLabel")
+			self.middleImages[i].Name = "ThumbstickMiddle"
+			self.middleImages[i].Visible = false
+			self.middleImages[i].BackgroundTransparency = 1
+			self.middleImages[i].Image = TOUCH_CONTROLS_SHEET
+			self.middleImages[i].ImageRectOffset = Vector2.new(1,1)
+			self.middleImages[i].ImageRectSize = Vector2.new(144, 144)
+			self.middleImages[i].ImageTransparency = MIDDLE_TRANSPARENCIES[i]
+			self.middleImages[i].AnchorPoint = Vector2.new(0.5, 0.5)
+			self.middleImages[i].ZIndex = 9
+			self.middleImages[i].Parent = self.thumbstickFrame
+		end
+		
+		local CameraChangedConn: RBXScriptConnection? = nil
+		local function onCurrentCameraChanged()
+			if CameraChangedConn then
+				CameraChangedConn:Disconnect()
+				CameraChangedConn = nil
+			end
+			local newCamera = workspace.CurrentCamera
+			if newCamera then
+				local function onViewportSizeChanged()
+					local size = newCamera.ViewportSize
+					local portraitMode = size.X < size.Y
+					layoutThumbstickFrame(portraitMode)
+				end
+				CameraChangedConn = newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportSizeChanged)
+				onViewportSizeChanged()
+			end
+		end
+		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(onCurrentCameraChanged)
+		if workspace.CurrentCamera then
+			onCurrentCameraChanged()
+		end
+		
+		self.moveTouchStartPosition = nil
+		
+		self.startImageFadeTween = nil
+		self.endImageFadeTween = nil
+		self.middleImageFadeTweens = {}
+		
+		self.onRenderSteppedConn = RunService.RenderStepped:Connect(function()
+			if self.tweenInAlphaStart ~= nil then
+				local delta = tick() - self.tweenInAlphaStart
+				
+				local fadeInTime = (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
+				
+				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+					* math.min(delta / fadeInTime, 1)
+				
+				if delta > fadeInTime then
+					self.tweenOutAlphaStart = tick()
+					self.tweenInAlphaStart = nil
+				end
+				
+			elseif self.tweenOutAlphaStart ~= nil then
+				local delta = tick() - self.tweenOutAlphaStart
+				
+				local fadeOutTime = (self.fadeInAndOutHalfDuration * 2)
+				- (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
+				
+				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+					+ FADE_IN_OUT_MAX_ALPHA * math.min(delta / fadeOutTime, 1)
+				
+				if delta > fadeOutTime  then
+					self.tweenOutAlphaStart = nil
+				end
+			end
+		end)
+		
+		self.onTouchEndedConn = UserInputService.TouchEnded:connect(function(inputObject: InputObject)
+			if inputObject == self.moveTouchObject then
+				self:OnInputEnded()
+			end
+		end)
+		
+		GuiService.MenuOpened:connect(function()
+			if self.moveTouchObject then
+				self:OnInputEnded()
+			end
+		end)
+		
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		while not playerGui do
+			localPlayer.ChildAdded:wait()
+			playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		end
+		
+		local playerGuiChangedConn = nil
+		local originalScreenOrientationWasLandscape =
+			playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft
+			or playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight
+		
+		local function longShowBackground()
+			self.fadeInAndOutHalfDuration = 2.5
+			self.fadeInAndOutBalance = 0.05
+			self.tweenInAlphaStart = tick()
+		end
+		
+		playerGuiChangedConn = playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(function()
+			if (originalScreenOrientationWasLandscape
+				and playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait)
+				or (not originalScreenOrientationWasLandscape
+					and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
+				
+				playerGuiChangedConn:disconnect()
+				longShowBackground()
+				
+				if originalScreenOrientationWasLandscape then
+					self.hasFadedBackgroundInPortrait = true
+				else
+					self.hasFadedBackgroundInLandscape = true
+				end
+			end
+		end)
+		
+		self.thumbstickFrame.Parent = parentFrame
+		
+		if game:IsLoaded() then
+			longShowBackground()
+		else
+			coroutine.wrap(function()
+				game.Loaded:Wait()
+				longShowBackground()
+			end)()
+		end
+	end
+	
+end
+
+local Keyboard = setmetatable({}, BaseCharacterController) do
+	Keyboard.__index = Keyboard
+	
+	--[[
+		Keyboard Character Control - This module handles controlling your avatar from a keyboard
+
+		2018 PlayerScripts Update - AllYourBlox
+	--]]
+	
+	function Keyboard.new(CONTROL_ACTION_PRIORITY)
+		local self = setmetatable(BaseCharacterController.new() :: any, Keyboard)
+		
+		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
+		
+		self.textFocusReleasedConn = nil
+		self.textFocusGainedConn = nil
+		self.windowFocusReleasedConn = nil
+		
+		self.forwardValue  = 0
+		self.backwardValue = 0
+		self.leftValue = 0
+		self.rightValue = 0
+		
+		self.jumpEnabled = true
+		
+		return self
+	end
+	
+	function Keyboard:Enable(enable: boolean)
+		if not UserInputService.KeyboardEnabled then
+			return false
+		end
+		
+		if enable == self.enabled then
+			-- Module is already in the state being requested. True is returned here since the module will be in the state
+			-- expected by the code that follows the Enable() call. This makes more sense than returning false to indicate
+			-- no action was necessary. False indicates failure to be in requested/expected state.
+			return true
+		end
+		
+		self.forwardValue  = 0
+		self.backwardValue = 0
+		self.leftValue = 0
+		self.rightValue = 0
+		self.moveVector = Vector3.zero
+		self.jumpRequested = false
+		self:UpdateJump()
+		
+		if enable then
+			self:BindContextActions()
+			self:ConnectFocusEventListeners()
+		else
+			self:UnbindContextActions()
+			self:DisconnectFocusEventListeners()
+		end
+		
+		self.enabled = enable
+		return true
+	end
+	
+	function Keyboard:UpdateMovement(inputState)
+		if inputState == Enum.UserInputState.Cancel then
+			self.moveVector = Vector3.zero
+		else
+			self.moveVector = Vector3.new(
+				self.leftValue + self.rightValue,
+				0,
+				self.forwardValue + self.backwardValue
+			)
+		end
+	end
+	
+	function Keyboard:UpdateJump()
+		self.isJumping = self.jumpRequested
+	end
+	
+	function Keyboard:BindContextActions()
+		
+		-- Note: In the previous version of this code, the movement values were not zeroed-out on UserInputState. Cancel, now they are,
+		-- which fixes them from getting stuck on.
+		-- We return ContextActionResult.Pass here for legacy reasons.
+		-- Many games rely on gameProcessedEvent being false on UserInputService.InputBegan for these control actions.
+		local handleMoveForward = function(actionName, inputState, inputObject)
+			self.forwardValue = (inputState == Enum.UserInputState.Begin) and -1 or 0
+			self:UpdateMovement(inputState)
+			return Enum.ContextActionResult.Pass
+		end
+		
+		local handleMoveBackward = function(actionName, inputState, inputObject)
+			self.backwardValue = (inputState == Enum.UserInputState.Begin) and 1 or 0
+			self:UpdateMovement(inputState)
+			return Enum.ContextActionResult.Pass
+		end
+		
+		local handleMoveLeft = function(actionName, inputState, inputObject)
+			self.leftValue = (inputState == Enum.UserInputState.Begin) and -1 or 0
+			self:UpdateMovement(inputState)
+			return Enum.ContextActionResult.Pass
+		end
+		
+		local handleMoveRight = function(actionName, inputState, inputObject)
+			self.rightValue = (inputState == Enum.UserInputState.Begin) and 1 or 0
+			self:UpdateMovement(inputState)
+			return Enum.ContextActionResult.Pass
+		end
+		
+		local handleJumpAction = function(actionName, inputState, inputObject)
+			self.jumpRequested = self.jumpEnabled and (inputState == Enum.UserInputState.Begin)
+			self:UpdateJump()
+			return Enum.ContextActionResult.Pass
+		end
+		
+		-- TODO: Revert to KeyCode bindings so that in the future the abstraction layer from actual keys to
+		-- movement direction is done in Lua
+		ContextActionService:BindActionAtPriority("moveForwardAction", handleMoveForward, false,
+			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterForward)
+		ContextActionService:BindActionAtPriority("moveBackwardAction", handleMoveBackward, false,
+			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterBackward)
+		ContextActionService:BindActionAtPriority("moveLeftAction", handleMoveLeft, false,
+			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterLeft)
+		ContextActionService:BindActionAtPriority("moveRightAction", handleMoveRight, false,
+			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterRight)
+		ContextActionService:BindActionAtPriority("jumpAction", handleJumpAction, false,
+			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterJump)
+	end
+	
+	function Keyboard:UnbindContextActions()
+		ContextActionService:UnbindAction("moveForwardAction")
+		ContextActionService:UnbindAction("moveBackwardAction")
+		ContextActionService:UnbindAction("moveLeftAction")
+		ContextActionService:UnbindAction("moveRightAction")
+		ContextActionService:UnbindAction("jumpAction")
+	end
+	
+	function Keyboard:ConnectFocusEventListeners()
+		local function onFocusReleased()
+			self.moveVector = Vector3.zero
+			self.forwardValue  = 0
+			self.backwardValue = 0
+			self.leftValue = 0
+			self.rightValue = 0
+			self.jumpRequested = false
+			self:UpdateJump()
+		end
+		
+		local function onTextFocusGained(textboxFocused)
+			self.jumpRequested = false
+			self:UpdateJump()
+		end
+		
+		self.textFocusReleasedConn = UserInputService.TextBoxFocusReleased:Connect(onFocusReleased)
+		self.textFocusGainedConn = UserInputService.TextBoxFocused:Connect(onTextFocusGained)
+		self.windowFocusReleasedConn = UserInputService.WindowFocused:Connect(onFocusReleased)
+	end
+	
+	function Keyboard:DisconnectFocusEventListeners()
+		if self.textFocusReleasedConn then
+			self.textFocusReleasedConn:Disconnect()
+			self.textFocusReleasedConn = nil
+		end
+		if self.textFocusGainedConn then
+			self.textFocusGainedConn:Disconnect()
+			self.textFocusGainedConn = nil
+		end
+		if self.windowFocusReleasedConn then
+			self.windowFocusReleasedConn:Disconnect()
+			self.windowFocusReleasedConn = nil
+		end
+	end
+end
+
+local Gamepad = setmetatable({}, BaseCharacterController) do
+	Gamepad.__index = Gamepad
+	
+	--[[
+		Gamepad Character Control - This module handles controlling your avatar using a game console-style controller
+
+		2018 PlayerScripts Update - AllYourBlox
+	--]]
+	
+	local NONE = Enum.UserInputType.None
+	local thumbstickDeadzone = 0.2
+	
+	function Gamepad.new(CONTROL_ACTION_PRIORITY)
+		local self = setmetatable(BaseCharacterController.new() :: any, Gamepad)
+		
+		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
+		
+		self.forwardValue  = 0
+		self.backwardValue = 0
+		self.leftValue = 0
+		self.rightValue = 0
+		
+		self.activeGamepad = NONE	-- Enum.UserInputType.Gamepad1, 2, 3...
+		self.gamepadConnectedConn = nil
+		self.gamepadDisconnectedConn = nil
+		return self
+	end
+	
+	function Gamepad:Enable(enable: boolean): boolean
+		if not UserInputService.GamepadEnabled then
+			return false
+		end
+		
+		if enable == self.enabled then
+			-- Module is already in the state being requested. True is returned here since the module will be in the state
+			-- expected by the code that follows the Enable() call. This makes more sense than returning false to indicate
+			-- no action was necessary. False indicates failure to be in requested/expected state.
+			return true
+		end
+		
+		self.forwardValue  = 0
+		self.backwardValue = 0
+		self.leftValue = 0
+		self.rightValue = 0
+		self.moveVector = Vector3.zero
+		self.isJumping = false
+		
+		if enable then
+			self.activeGamepad = self:GetHighestPriorityGamepad()
+			if self.activeGamepad ~= NONE then
+				self:BindContextActions()
+				self:ConnectGamepadConnectionListeners()
+			else
+				-- No connected gamepads, failure to enable
+				return false
+			end
+		else
+			self:UnbindContextActions()
+			self:DisconnectGamepadConnectionListeners()
+			self.activeGamepad = NONE
+		end
+		
+		self.enabled = enable
+		return true
+	end
+	
+	-- This function selects the lowest number gamepad from the currently-connected gamepad
+	-- and sets it as the active gamepad
+	function Gamepad:GetHighestPriorityGamepad()
+		local connectedGamepads = UserInputService:GetConnectedGamepads()
+		local bestGamepad = NONE -- Note that this value is higher than all valid gamepad values
+		for _, gamepad in pairs(connectedGamepads) do
+			if gamepad.Value < bestGamepad.Value then
+				bestGamepad = gamepad
+			end
+		end
+		return bestGamepad
+	end
+	
+	function Gamepad:BindContextActions()
+		
+		if self.activeGamepad == NONE then
+			-- There must be an active gamepad to set up bindings
+			return false
+		end
+		
+		local handleJumpAction = function(actionName, inputState, inputObject)
+			self.isJumping = (inputState == Enum.UserInputState.Begin)
+			return Enum.ContextActionResult.Sink
+		end
+		
+		local handleThumbstickInput = function(actionName, inputState, inputObject)
+			
+			if inputState == Enum.UserInputState.Cancel then
+				self.moveVector = Vector3.zero
+				return Enum.ContextActionResult.Sink
+			end
+			
+			if self.activeGamepad ~= inputObject.UserInputType then
+				return Enum.ContextActionResult.Pass
+			end
+			
+			if inputObject.KeyCode ~= Enum.KeyCode.Thumbstick1 then return end
+			
+			if inputObject.Position.magnitude > thumbstickDeadzone then
+				self.moveVector = Vector3.new(inputObject.Position.X, 0, -inputObject.Position.Y)
+			else
+				self.moveVector = Vector3.zero
+			end
+			
+			return Enum.ContextActionResult.Sink
+		end
+		
+		ContextActionService:BindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
+		ContextActionService:BindActionAtPriority("jumpAction", handleJumpAction, false,
+			self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonA)
+		ContextActionService:BindActionAtPriority("moveThumbstick", handleThumbstickInput, false,
+			self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Thumbstick1)
+		
+		return true
+	end
+	
+	function Gamepad:UnbindContextActions()
+		if self.activeGamepad ~= NONE then
+			ContextActionService:UnbindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
+		end
+		ContextActionService:UnbindAction("moveThumbstick")
+		ContextActionService:UnbindAction("jumpAction")
+	end
+	
+	function Gamepad:OnNewGamepadConnected()
+		-- A new gamepad has been connected.
+		local bestGamepad: Enum.UserInputType = self:GetHighestPriorityGamepad()
+		
+		if bestGamepad == self.activeGamepad then
+			-- A new gamepad was connected, but our active gamepad is not changing
+			return
+		end
+		
+		if bestGamepad == NONE then
+			-- There should be an active gamepad when GamepadConnected fires, so this should not
+			-- normally be hit. If there is no active gamepad, unbind actions but leave
+			-- the module enabled and continue to listen for a new gamepad connection.
+			warn("Gamepad:OnNewGamepadConnected found no connected gamepads")
+			self:UnbindContextActions()
+			return
+		end
+		
+		if self.activeGamepad ~= NONE then
+			-- Switching from one active gamepad to another
+			self:UnbindContextActions()
+		end
+		
+		self.activeGamepad = bestGamepad
+		self:BindContextActions()
+	end
+	
+	function Gamepad:OnCurrentGamepadDisconnected()
+		if self.activeGamepad ~= NONE then
+			ContextActionService:UnbindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
+		end
+		
+		local bestGamepad = self:GetHighestPriorityGamepad()
+		
+		if self.activeGamepad ~= NONE and bestGamepad == self.activeGamepad then
+			warn("Gamepad:OnCurrentGamepadDisconnected found the supposedly disconnected gamepad in connectedGamepads.")
+			self:UnbindContextActions()
+			self.activeGamepad = NONE
+			return
+		end
+		
+		if bestGamepad == NONE then
+			-- No active gamepad, unbinding actions but leaving gamepad connection listener active
+			self:UnbindContextActions()
+			self.activeGamepad = NONE
+		else
+			-- Set new gamepad as active and bind to tool activation
+			self.activeGamepad = bestGamepad
+			ContextActionService:BindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
+		end
+	end
+	
+	function Gamepad:ConnectGamepadConnectionListeners()
+		self.gamepadConnectedConn = UserInputService.GamepadConnected:Connect(function(gamepadEnum)
+			self:OnNewGamepadConnected()
+		end)
+		
+		self.gamepadDisconnectedConn = UserInputService.GamepadDisconnected:Connect(function(gamepadEnum)
+			if self.activeGamepad == gamepadEnum then
+				self:OnCurrentGamepadDisconnected()
+			end
+		end)
+		
+	end
+	
+	function Gamepad:DisconnectGamepadConnectionListeners()
+		if self.gamepadConnectedConn then
+			self.gamepadConnectedConn:Disconnect()
+			self.gamepadConnectedConn = nil
+		end
+		
+		if self.gamepadDisconnectedConn then
+			self.gamepadDisconnectedConn:Disconnect()
+			self.gamepadDisconnectedConn = nil
+		end
+	end
+	
+end
+
+local TouchJump = setmetatable({}, BaseCharacterController) do
+	TouchJump.__index = TouchJump
+	
+	--[[
+		// FileName: TouchJump
+		// Version 1.0
+		// Written by: jmargh
+		// Description: Implements jump controls for touch devices. Use with Thumbstick and Thumbpad
+	--]]
+	
+	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
+	
+	function TouchJump.new()
+		local self = setmetatable(BaseCharacterController.new() :: any, TouchJump)
+		
+		self.parentUIFrame = nil
+		self.jumpButton = nil
+		self.characterAddedConn = nil
+		self.humanoidStateEnabledChangedConn = nil
+		self.humanoidJumpPowerConn = nil
+		self.humanoidParentConn = nil
+		self.externallyEnabled = false
+		self.jumpPower = 0
+		self.jumpStateEnabled = true
+		self.isJumping = false
+		self.humanoid = nil -- saved reference because property change connections are made using it
+		
+		return self
+	end
+	
+	function TouchJump:EnableButton(enable)
+		if enable then
+			if not self.jumpButton then
+				self:Create()
+			end
+			local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if humanoid and self.externallyEnabled then
+				if self.externallyEnabled then
+					if humanoid.JumpPower > 0 then
+						self.jumpButton.Visible = true
+					end
+				end
+			end
+		else
+			self.jumpButton.Visible = false
+			self.isJumping = false
+			self.jumpButton.ImageRectOffset = Vector2.new(1, 146)
+		end
+	end
+	
+	function TouchJump:UpdateEnabled()
+		if self.jumpPower > 0 and self.jumpStateEnabled then
+			self:EnableButton(true)
+		else
+			self:EnableButton(false)
+		end
+	end
+	
+	function TouchJump:HumanoidChanged(prop)
+		local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			if prop == "JumpPower" then
+				self.jumpPower =  humanoid.JumpPower
+				self:UpdateEnabled()
+			elseif prop == "Parent" then
+				if not humanoid.Parent then
+					self.humanoidChangeConn:Disconnect()
+				end
+			end
+		end
+	end
+	
+	function TouchJump:HumanoidStateEnabledChanged(state, isEnabled)
+		if state == Enum.HumanoidStateType.Jumping then
+			self.jumpStateEnabled = isEnabled
+			self:UpdateEnabled()
+		end
+	end
+	
+	function TouchJump:CharacterAdded(char)
+		if self.humanoidChangeConn then
+			self.humanoidChangeConn:Disconnect()
+			self.humanoidChangeConn = nil
+		end
+		
+		self.humanoid = char:FindFirstChildOfClass("Humanoid")
+		while not self.humanoid do
+			char.ChildAdded:wait()
+			self.humanoid = char:FindFirstChildOfClass("Humanoid")
+		end
+		
+		self.humanoidJumpPowerConn = self.humanoid:GetPropertyChangedSignal("JumpPower"):Connect(function()
+			self.jumpPower =  self.humanoid.JumpPower
+			self:UpdateEnabled()
+		end)
+		
+		self.humanoidParentConn = self.humanoid:GetPropertyChangedSignal("Parent"):Connect(function()
+			if not self.humanoid.Parent then
+				self.humanoidJumpPowerConn:Disconnect()
+				self.humanoidJumpPowerConn = nil
+				self.humanoidParentConn:Disconnect()
+				self.humanoidParentConn = nil
+			end
+		end)
+		
+		self.humanoidStateEnabledChangedConn = self.humanoid.StateEnabledChanged:Connect(function(state, enabled)
+			self:HumanoidStateEnabledChanged(state, enabled)
+		end)
+		
+		self.jumpPower = self.humanoid.JumpPower
+		self.jumpStateEnabled = self.humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping)
+		self:UpdateEnabled()
+	end
+	
+	function TouchJump:SetupCharacterAddedFunction()
+		self.characterAddedConn = localPlayer.CharacterAdded:Connect(function(char)
+			self:CharacterAdded(char)
+		end)
+		if localPlayer.Character then
+			self:CharacterAdded(localPlayer.Character)
+		end
+	end
+	
+	function TouchJump:Enable(enable, parentFrame)
+		if parentFrame then
+			self.parentUIFrame = parentFrame
+		end
+		self.externallyEnabled = enable
+		self:EnableButton(enable)
+	end
+	
+	function TouchJump:Create()
+		if not self.parentUIFrame then
+			return
+		end
+		
+		if self.jumpButton then
+			self.jumpButton:Destroy()
+			self.jumpButton = nil
+		end
+		
+		local minAxis = math.min(self.parentUIFrame.AbsoluteSize.x, self.parentUIFrame.AbsoluteSize.y)
+		local isSmallScreen = minAxis <= 500
+		local jumpButtonSize = isSmallScreen and 70 or 120
+		
+		self.jumpButton = Instance.new("ImageButton")
+		self.jumpButton.Name = "JumpButton"
+		self.jumpButton.Visible = false
+		self.jumpButton.BackgroundTransparency = 1
+		self.jumpButton.Image = TOUCH_CONTROL_SHEET
+		self.jumpButton.ImageRectOffset = Vector2.new(1, 146)
+		self.jumpButton.ImageRectSize = Vector2.new(144, 144)
+		self.jumpButton.Size = UDim2.new(0, jumpButtonSize, 0, jumpButtonSize)
+		
+		self.jumpButton.Position = isSmallScreen
+			and UDim2.new(1, -(jumpButtonSize * 1.5 - 10), 1, -jumpButtonSize - 20)
+			or UDim2.new(1, -(jumpButtonSize * 1.5 - 10), 1, -jumpButtonSize * 1.75)
+		
+		local touchObject: InputObject? = nil
+		self.jumpButton.InputBegan:connect(function(inputObject)
+			--A touch that starts elsewhere on the screen will be sent to a frame's InputBegan event
+			--if it moves over the frame. So we check that this is actually a new touch (inputObject.UserInputState ~= Enum.UserInputState.Begin)
+			if touchObject or inputObject.UserInputType ~= Enum.UserInputType.Touch
+				or inputObject.UserInputState ~= Enum.UserInputState.Begin then
+				return
+			end
+			
+			touchObject = inputObject
+			self.jumpButton.ImageRectOffset = Vector2.new(146, 146)
+			self.isJumping = true
+		end)
+		
+		local OnInputEnded = function()
+			touchObject = nil
+			self.isJumping = false
+			self.jumpButton.ImageRectOffset = Vector2.new(1, 146)
+		end
+		
+		self.jumpButton.InputEnded:connect(function(inputObject: InputObject)
+			if inputObject == touchObject then
+				OnInputEnded()
+			end
+		end)
+		
+		GuiService.MenuOpened:connect(function()
+			if touchObject then
+				OnInputEnded()
+			end
+		end)
+		
+		if not self.characterAddedConn then
+			self:SetupCharacterAddedFunction()
+		end
+		
+		self.jumpButton.Parent = self.parentUIFrame
+	end
+	
+end
+
+local TouchThumbstick = setmetatable({}, BaseCharacterController) do
+	TouchThumbstick.__index = TouchThumbstick
+	
+	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
+	
+	function TouchThumbstick.new()
+		local self = setmetatable(BaseCharacterController.new() :: any, TouchThumbstick)
+		
+		self.isFollowStick = false
+		
+		self.thumbstickFrame = nil
+		self.moveTouchObject = nil
+		self.onTouchMovedConn = nil
+		self.onTouchEndedConn = nil
+		self.screenPos = nil
+		self.stickImage = nil
+		self.thumbstickSize = nil -- Float
+		
+		return self
+	end
+	
+	function TouchThumbstick:Enable(enable: boolean?, uiParentFrame)
+		-- If nil, return false (invalid argument)
+		if enable == nil then return false end
+		
+		-- Force anything non-nil to boolean before comparison
+		enable = enable and true or false
+		
+		-- If no state change, return true indicating already in requested state
+		if self.enabled == enable then return true end
+		
+		self.moveVector = Vector3.zero
+		self.isJumping = false
+		
+		if enable then
+			-- Enable
+			if not self.thumbstickFrame then
+				self:Create(uiParentFrame)
+			end
+			self.thumbstickFrame.Visible = true
+		else
+			-- Disable
+			self.thumbstickFrame.Visible = false
+			self:OnInputEnded()
+		end
+		self.enabled = enable
+	end
+	
+	function TouchThumbstick:OnInputEnded()
+		self.thumbstickFrame.Position = self.screenPos
+		self.stickImage.Position = UDim2.new(
+			0,
+			self.thumbstickFrame.Size.X.Offset / 2 - self.thumbstickSize / 4,
+			0,
+			self.thumbstickFrame.Size.Y.Offset / 2 - self.thumbstickSize / 4
+		)
+		
+		self.moveVector = Vector3.zero
+		self.isJumping = false
+		self.thumbstickFrame.Position = self.screenPos
+		self.moveTouchObject = nil
+	end
+	
+	function TouchThumbstick:Create(parentFrame)
+		
+		if self.thumbstickFrame then
+			self.thumbstickFrame:Destroy()
+			self.thumbstickFrame = nil
+			if self.onTouchMovedConn then
+				self.onTouchMovedConn:Disconnect()
+				self.onTouchMovedConn = nil
+			end
+			if self.onTouchEndedConn then
+				self.onTouchEndedConn:Disconnect()
+				self.onTouchEndedConn = nil
+			end
+		end
+		
+		local minAxis = math.min(parentFrame.AbsoluteSize.X, parentFrame.AbsoluteSize.Y)
+		local isSmallScreen = minAxis <= 500
+		self.thumbstickSize = isSmallScreen and 70 or 120
+		self.screenPos = isSmallScreen
+			and UDim2.new(0, (self.thumbstickSize / 2) - 10, 1, -self.thumbstickSize - 20)
+			or UDim2.new(0, self.thumbstickSize / 2, 1, -self.thumbstickSize * 1.75)
+		
+		self.thumbstickFrame = Instance.new("Frame")
+		self.thumbstickFrame.Name = "ThumbstickFrame"
+		self.thumbstickFrame.Active = true
+		self.thumbstickFrame.Visible = false
+		self.thumbstickFrame.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
+		self.thumbstickFrame.Position = self.screenPos
+		self.thumbstickFrame.BackgroundTransparency = 1
+		
+		local outerImage = Instance.new("ImageLabel")
+		outerImage.Name = "OuterImage"
+		outerImage.Image = TOUCH_CONTROL_SHEET
+		outerImage.ImageRectOffset = Vector2.new()
+		outerImage.ImageRectSize = Vector2.new(220, 220)
+		outerImage.BackgroundTransparency = 1
+		outerImage.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
+		outerImage.Position = UDim2.new(0, 0, 0, 0)
+		outerImage.Parent = self.thumbstickFrame
+		
+		self.stickImage = Instance.new("ImageLabel")
+		self.stickImage.Name = "StickImage"
+		self.stickImage.Image = TOUCH_CONTROL_SHEET
+		self.stickImage.ImageRectOffset = Vector2.new(220, 0)
+		self.stickImage.ImageRectSize = Vector2.new(111, 111)
+		self.stickImage.BackgroundTransparency = 1
+		self.stickImage.Size = UDim2.new(0, self.thumbstickSize / 2, 0, self.thumbstickSize / 2)
+		self.stickImage.Position = UDim2.new(
+			0,
+			self.thumbstickSize / 2 - self.thumbstickSize / 4,
+			0,
+			self.thumbstickSize / 2 - self.thumbstickSize / 4
+		)
+		self.stickImage.ZIndex = 2
+		self.stickImage.Parent = self.thumbstickFrame
+		
+		local centerPosition = nil
+		local deadZone = 0.05
+		
+		local function DoMove(direction: Vector2)
+			
+			local currentMoveVector = direction / (self.thumbstickSize/2)
+			
+			-- Scaled Radial Dead Zone
+			local inputAxisMagnitude = currentMoveVector.magnitude
+			if inputAxisMagnitude < deadZone then
+				currentMoveVector = Vector3.zero
+			else
+				currentMoveVector = currentMoveVector.unit * ((inputAxisMagnitude - deadZone) / (1 - deadZone))
+				-- NOTE: Making currentMoveVector a unit vector will cause the player to instantly go max speed
+				-- must check for zero length vector is using unit
+				currentMoveVector = Vector3.new(currentMoveVector.X, 0, currentMoveVector.Y)
+			end
+			
+			self.moveVector = currentMoveVector
+		end
+		
+		local function MoveStick(pos: Vector3)
+			local relativePosition = Vector2.new(pos.X - centerPosition.X, pos.Y - centerPosition.Y)
+			local length = relativePosition.magnitude
+			local maxLength = self.thumbstickFrame.AbsoluteSize.X/2
+			if self.isFollowStick and length > maxLength then
+				local offset = relativePosition.unit * maxLength
+				self.thumbstickFrame.Position = UDim2.new(
+					0, pos.X - self.thumbstickFrame.AbsoluteSize.X/2 - offset.X,
+					0, pos.Y - self.thumbstickFrame.AbsoluteSize.Y/2 - offset.Y)
+			else
+				length = math.min(length, maxLength)
+				relativePosition = relativePosition.unit * length
+			end
+			self.stickImage.Position = UDim2.new(
+				0,
+				relativePosition.X + self.stickImage.AbsoluteSize.X / 2,
+				0,
+				relativePosition.Y + self.stickImage.AbsoluteSize.Y / 2
+			)
+		end
+		
+		-- input connections
+		self.thumbstickFrame.InputBegan:Connect(function(inputObject: InputObject)
+			--A touch that starts elsewhere on the screen will be sent to a frame's InputBegan event
+			--if it moves over the frame. So we check that this is actually a new touch (inputObject.UserInputState ~= Enum.UserInputState.Begin)
+			if self.moveTouchObject or inputObject.UserInputType ~= Enum.UserInputType.Touch
+				or inputObject.UserInputState ~= Enum.UserInputState.Begin then
+				return
+			end
+			
+			self.moveTouchObject = inputObject
+			self.thumbstickFrame.Position = UDim2.new(
+				0,
+				inputObject.Position.X - self.thumbstickFrame.Size.X.Offset / 2,
+				0,
+				inputObject.Position.Y - self.thumbstickFrame.Size.Y.Offset / 2
+			)
+			
+			centerPosition = Vector2.new(
+				self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
+				self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
+			)
+			
+			local direction = Vector2.new(
+				inputObject.Position.X - centerPosition.X,
+				inputObject.Position.Y - centerPosition.Y
+			)
+		end)
+		
+		self.onTouchMovedConn = UserInputService.TouchMoved:Connect(
+			function(inputObject: InputObject, isProcessed: boolean)
+				if inputObject == self.moveTouchObject then
+					centerPosition = Vector2.new(
+						self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
+						self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
+					)
+					local direction = Vector2.new(
+						inputObject.Position.X - centerPosition.X,
+						inputObject.Position.Y - centerPosition.Y
+					)
+					DoMove(direction)
+					MoveStick(inputObject.Position)
+				end
+			end
+		)
+		
+		self.onTouchEndedConn = UserInputService.TouchEnded:Connect(function(inputObject, isProcessed)
+			if inputObject == self.moveTouchObject then
+				self:OnInputEnded()
+			end
+		end)
+		
+		GuiService.MenuOpened:Connect(function()
+			if self.moveTouchObject then
+				self:OnInputEnded()
+			end
+		end)
+		
+		self.thumbstickFrame.Parent = parentFrame
 	end
 	
 end
@@ -6839,179 +8201,6 @@ local ClickToMoveDisplay = {} do
 	end
 	
 end
-
-
-local Keyboard = setmetatable({}, BaseCharacterController) do
-	Keyboard.__index = Keyboard
-	
-	--[[
-		Keyboard Character Control - This module handles controlling your avatar from a keyboard
-
-		2018 PlayerScripts Update - AllYourBlox
-	--]]
-	
-	function Keyboard.new(CONTROL_ACTION_PRIORITY)
-		local self = setmetatable(BaseCharacterController.new() :: any, Keyboard)
-		
-		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
-		
-		self.textFocusReleasedConn = nil
-		self.textFocusGainedConn = nil
-		self.windowFocusReleasedConn = nil
-		
-		self.forwardValue  = 0
-		self.backwardValue = 0
-		self.leftValue = 0
-		self.rightValue = 0
-		
-		self.jumpEnabled = true
-		
-		return self
-	end
-	
-	function Keyboard:Enable(enable: boolean)
-		if not UserInputService.KeyboardEnabled then
-			return false
-		end
-		
-		if enable == self.enabled then
-			-- Module is already in the state being requested. True is returned here since the module will be in the state
-			-- expected by the code that follows the Enable() call. This makes more sense than returning false to indicate
-			-- no action was necessary. False indicates failure to be in requested/expected state.
-			return true
-		end
-		
-		self.forwardValue  = 0
-		self.backwardValue = 0
-		self.leftValue = 0
-		self.rightValue = 0
-		self.moveVector = Vector3.zero
-		self.jumpRequested = false
-		self:UpdateJump()
-		
-		if enable then
-			self:BindContextActions()
-			self:ConnectFocusEventListeners()
-		else
-			self:UnbindContextActions()
-			self:DisconnectFocusEventListeners()
-		end
-		
-		self.enabled = enable
-		return true
-	end
-	
-	function Keyboard:UpdateMovement(inputState)
-		if inputState == Enum.UserInputState.Cancel then
-			self.moveVector = Vector3.zero
-		else
-			self.moveVector = Vector3.new(
-				self.leftValue + self.rightValue,
-				0,
-				self.forwardValue + self.backwardValue
-			)
-		end
-	end
-	
-	function Keyboard:UpdateJump()
-		self.isJumping = self.jumpRequested
-	end
-	
-	function Keyboard:BindContextActions()
-		
-		-- Note: In the previous version of this code, the movement values were not zeroed-out on UserInputState. Cancel, now they are,
-		-- which fixes them from getting stuck on.
-		-- We return ContextActionResult.Pass here for legacy reasons.
-		-- Many games rely on gameProcessedEvent being false on UserInputService.InputBegan for these control actions.
-		local handleMoveForward = function(actionName, inputState, inputObject)
-			self.forwardValue = (inputState == Enum.UserInputState.Begin) and -1 or 0
-			self:UpdateMovement(inputState)
-			return Enum.ContextActionResult.Pass
-		end
-		
-		local handleMoveBackward = function(actionName, inputState, inputObject)
-			self.backwardValue = (inputState == Enum.UserInputState.Begin) and 1 or 0
-			self:UpdateMovement(inputState)
-			return Enum.ContextActionResult.Pass
-		end
-		
-		local handleMoveLeft = function(actionName, inputState, inputObject)
-			self.leftValue = (inputState == Enum.UserInputState.Begin) and -1 or 0
-			self:UpdateMovement(inputState)
-			return Enum.ContextActionResult.Pass
-		end
-		
-		local handleMoveRight = function(actionName, inputState, inputObject)
-			self.rightValue = (inputState == Enum.UserInputState.Begin) and 1 or 0
-			self:UpdateMovement(inputState)
-			return Enum.ContextActionResult.Pass
-		end
-		
-		local handleJumpAction = function(actionName, inputState, inputObject)
-			self.jumpRequested = self.jumpEnabled and (inputState == Enum.UserInputState.Begin)
-			self:UpdateJump()
-			return Enum.ContextActionResult.Pass
-		end
-		
-		-- TODO: Revert to KeyCode bindings so that in the future the abstraction layer from actual keys to
-		-- movement direction is done in Lua
-		ContextActionService:BindActionAtPriority("moveForwardAction", handleMoveForward, false,
-			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterForward)
-		ContextActionService:BindActionAtPriority("moveBackwardAction", handleMoveBackward, false,
-			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterBackward)
-		ContextActionService:BindActionAtPriority("moveLeftAction", handleMoveLeft, false,
-			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterLeft)
-		ContextActionService:BindActionAtPriority("moveRightAction", handleMoveRight, false,
-			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterRight)
-		ContextActionService:BindActionAtPriority("jumpAction", handleJumpAction, false,
-			self.CONTROL_ACTION_PRIORITY, Enum.PlayerActions.CharacterJump)
-	end
-	
-	function Keyboard:UnbindContextActions()
-		ContextActionService:UnbindAction("moveForwardAction")
-		ContextActionService:UnbindAction("moveBackwardAction")
-		ContextActionService:UnbindAction("moveLeftAction")
-		ContextActionService:UnbindAction("moveRightAction")
-		ContextActionService:UnbindAction("jumpAction")
-	end
-	
-	function Keyboard:ConnectFocusEventListeners()
-		local function onFocusReleased()
-			self.moveVector = Vector3.zero
-			self.forwardValue  = 0
-			self.backwardValue = 0
-			self.leftValue = 0
-			self.rightValue = 0
-			self.jumpRequested = false
-			self:UpdateJump()
-		end
-		
-		local function onTextFocusGained(textboxFocused)
-			self.jumpRequested = false
-			self:UpdateJump()
-		end
-		
-		self.textFocusReleasedConn = UserInputService.TextBoxFocusReleased:Connect(onFocusReleased)
-		self.textFocusGainedConn = UserInputService.TextBoxFocused:Connect(onTextFocusGained)
-		self.windowFocusReleasedConn = UserInputService.WindowFocused:Connect(onFocusReleased)
-	end
-	
-	function Keyboard:DisconnectFocusEventListeners()
-		if self.textFocusReleasedConn then
-			self.textFocusReleasedConn:Disconnect()
-			self.textFocusReleasedConn = nil
-		end
-		if self.textFocusGainedConn then
-			self.textFocusGainedConn:Disconnect()
-			self.textFocusGainedConn = nil
-		end
-		if self.windowFocusReleasedConn then
-			self.windowFocusReleasedConn:Disconnect()
-			self.windowFocusReleasedConn = nil
-		end
-	end
-end
-
 
 local ClickToMove = setmetatable({}, Keyboard) do
 	ClickToMove.__index = ClickToMove
@@ -8234,784 +9423,6 @@ local ClickToMove = setmetatable({}, Keyboard) do
 	end
 
 end
-	
-
-local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
-	DynamicThumbstick.__index = DynamicThumbstick
-	
-	local TOUCH_CONTROLS_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
-	
-	local DYNAMIC_THUMBSTICK_ACTION_NAME = "DynamicThumbstickAction"
-	local DYNAMIC_THUMBSTICK_ACTION_PRIORITY = Enum.ContextActionPriority.High.Value
-	
-	local MIDDLE_TRANSPARENCIES = {
-		1 - 0.89,
-		1 - 0.70,
-		1 - 0.60,
-		1 - 0.50,
-		1 - 0.40,
-		1 - 0.30,
-		1 - 0.25
-	}
-	
-	local NUM_MIDDLE_IMAGES = #MIDDLE_TRANSPARENCIES
-	
-	local FADE_IN_OUT_BACKGROUND = true
-	local FADE_IN_OUT_MAX_ALPHA = 0.35
-	
-	local FADE_IN_OUT_HALF_DURATION_DEFAULT = 0.3
-	local FADE_IN_OUT_BALANCE_DEFAULT = 0.5
-	local ThumbstickFadeTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-	
-	function DynamicThumbstick.new()
-		local self = setmetatable(BaseCharacterController.new() :: any, DynamicThumbstick)
-		
-		self.moveTouchObject = nil
-		self.moveTouchLockedIn = false
-		self.moveTouchFirstChanged = false
-		self.moveTouchStartPosition = nil
-		
-		self.startImage = nil
-		self.endImage = nil
-		self.middleImages = {}
-		
-		self.startImageFadeTween = nil
-		self.endImageFadeTween = nil
-		self.middleImageFadeTweens = {}
-		
-		self.isFirstTouch = true
-		
-		self.thumbstickFrame = nil
-		
-		self.onRenderSteppedConn = nil
-		
-		self.fadeInAndOutBalance = FADE_IN_OUT_BALANCE_DEFAULT
-		self.fadeInAndOutHalfDuration = FADE_IN_OUT_HALF_DURATION_DEFAULT
-		self.hasFadedBackgroundInPortrait = false
-		self.hasFadedBackgroundInLandscape = false
-		
-		self.tweenInAlphaStart = nil
-		self.tweenOutAlphaStart = nil
-		
-		return self
-	end
-	
-	-- Note: Overrides base class GetIsJumping with get-and-clear behavior to do a single jump
-	-- rather than sustained jumping. This is only to preserve the current behavior through the refactor.
-	function DynamicThumbstick:GetIsJumping()
-		local wasJumping = self.isJumping
-		self.isJumping = false
-		return wasJumping
-	end
-	
-	function DynamicThumbstick:Enable(enable: boolean?, uiParentFrame): boolean?
-		if enable == nil then return false end			-- If nil, return false (invalid argument)
-		enable = enable and true or false				-- Force anything non-nil to boolean before comparison
-		if self.enabled == enable then return true end	-- If no state change, return true indicating already in requested state
-		
-		if enable then
-			-- Enable
-			if not self.thumbstickFrame then
-				self:Create(uiParentFrame)
-			end
-			
-			self:BindContextActions()
-		else
-			ContextActionService:UnbindAction(DYNAMIC_THUMBSTICK_ACTION_NAME)
-			-- Disable
-			self:OnInputEnded() -- Cleanup
-		end
-		
-		self.enabled = enable
-		self.thumbstickFrame.Visible = enable
-		return nil
-	end
-	
-	-- Was called OnMoveTouchEnded in previous version
-	function DynamicThumbstick:OnInputEnded()
-		self.moveTouchObject = nil
-		self.moveVector = Vector3.zero
-		self:FadeThumbstick(false)
-	end
-	
-	function DynamicThumbstick:FadeThumbstick(visible: boolean?)
-		if not visible and self.moveTouchObject then
-			return
-		end
-		if self.isFirstTouch then return end
-		
-		if self.startImageFadeTween then
-			self.startImageFadeTween:Cancel()
-		end
-		if self.endImageFadeTween then
-			self.endImageFadeTween:Cancel()
-		end
-		for i = 1, #self.middleImages do
-			if self.middleImageFadeTweens[i] then
-				self.middleImageFadeTweens[i]:Cancel()
-			end
-		end
-		
-		if visible then
-			self.startImageFadeTween = TweenService:Create(
-				self.startImage,
-				ThumbstickFadeTweenInfo,
-				{ ImageTransparency = 0 }
-			)
-			self.startImageFadeTween:Play()
-			
-			self.endImageFadeTween = TweenService:Create(
-				self.endImage,
-				ThumbstickFadeTweenInfo,
-				{ ImageTransparency = 0.2 }
-			)
-			self.endImageFadeTween:Play()
-			
-			for i = 1, #self.middleImages do
-				self.middleImageFadeTweens[i] = TweenService:Create(
-					self.middleImages[i],
-					ThumbstickFadeTweenInfo,
-					{ ImageTransparency = MIDDLE_TRANSPARENCIES[i] }
-				)
-				self.middleImageFadeTweens[i]:Play()
-			end
-		else
-			self.startImageFadeTween = TweenService:Create(
-				self.startImage,
-				ThumbstickFadeTweenInfo, 
-				{ ImageTransparency = 1 }
-			)
-			self.startImageFadeTween:Play()
-			
-			self.endImageFadeTween = TweenService:Create(
-				self.endImage,
-				ThumbstickFadeTweenInfo,
-				{ ImageTransparency = 1 }
-			)
-			self.endImageFadeTween:Play()
-			
-			for i = 1, #self.middleImages do
-				self.middleImageFadeTweens[i] = TweenService:Create(
-					self.middleImages[i],
-					ThumbstickFadeTweenInfo,
-					{ ImageTransparency = 1 }
-				)
-				self.middleImageFadeTweens[i]:Play()
-			end
-		end
-	end
-	
-	function DynamicThumbstick:FadeThumbstickFrame(fadeDuration: number, fadeRatio: number)
-		self.fadeInAndOutHalfDuration = fadeDuration * 0.5
-		self.fadeInAndOutBalance = fadeRatio
-		self.tweenInAlphaStart = tick()
-	end
-	
-	function DynamicThumbstick:InputInFrame(inputObject: InputObject)
-		local frameCornerTopLeft: Vector2 = self.thumbstickFrame.AbsolutePosition
-		local frameCornerBottomRight = frameCornerTopLeft + self.thumbstickFrame.AbsoluteSize
-		local inputPosition = inputObject.Position
-		if inputPosition.X >= frameCornerTopLeft.X and inputPosition.Y >= frameCornerTopLeft.Y then
-			if inputPosition.X <= frameCornerBottomRight.X and inputPosition.Y <= frameCornerBottomRight.Y then
-				return true
-			end
-		end
-		return false
-	end
-	
-	function DynamicThumbstick:DoFadeInBackground()
-		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-		local hasFadedBackgroundInOrientation = false
-		
-		-- only fade in/out the background once per orientation
-		if playerGui then
-			if playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft or
-				playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight then
-				hasFadedBackgroundInOrientation = self.hasFadedBackgroundInLandscape
-				self.hasFadedBackgroundInLandscape = true
-			elseif playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait then
-				hasFadedBackgroundInOrientation = self.hasFadedBackgroundInPortrait
-				self.hasFadedBackgroundInPortrait = true
-			end
-		end
-		
-		if not hasFadedBackgroundInOrientation then
-			self.fadeInAndOutHalfDuration = FADE_IN_OUT_HALF_DURATION_DEFAULT
-			self.fadeInAndOutBalance = FADE_IN_OUT_BALANCE_DEFAULT
-			self.tweenInAlphaStart = tick()
-		end
-	end
-	
-	function DynamicThumbstick:DoMove(direction: Vector3)
-		local currentMoveVector: Vector3 = direction
-		
-		-- Scaled Radial Dead Zone
-		local inputAxisMagnitude: number = currentMoveVector.Magnitude
-		if inputAxisMagnitude < self.radiusOfDeadZone then
-			currentMoveVector = Vector3.zero
-		else
-			currentMoveVector = currentMoveVector.Unit*(
-				1 - math.max(0, (self.radiusOfMaxSpeed - currentMoveVector.Magnitude)/self.radiusOfMaxSpeed)
-			)
-			currentMoveVector = Vector3.new(currentMoveVector.X, 0, currentMoveVector.Y)
-		end
-		
-		self.moveVector = currentMoveVector
-	end
-	
-	
-	function DynamicThumbstick:LayoutMiddleImages(startPos: Vector3, endPos: Vector3)
-		local startDist = (self.thumbstickSize / 2) + self.middleSize
-		local vector = endPos - startPos
-		local distAvailable = vector.Magnitude - (self.thumbstickRingSize / 2) - self.middleSize
-		local direction = vector.Unit
-		
-		local distNeeded = self.middleSpacing * NUM_MIDDLE_IMAGES
-		local spacing = self.middleSpacing
-		
-		if distNeeded < distAvailable then
-			spacing = distAvailable / NUM_MIDDLE_IMAGES
-		end
-		
-		for i = 1, NUM_MIDDLE_IMAGES do
-			local image = self.middleImages[i]
-			local distWithout = startDist + (spacing * (i - 2))
-			local currentDist = startDist + (spacing * (i - 1))
-			
-			if distWithout < distAvailable then
-				local pos = endPos - direction * currentDist
-				local exposedFraction = math.clamp(1 - ((currentDist - distAvailable) / spacing), 0, 1)
-				
-				image.Visible = true
-				image.Position = UDim2.new(0, pos.X, 0, pos.Y)
-				image.Size = UDim2.new(0, self.middleSize * exposedFraction, 0, self.middleSize * exposedFraction)
-			else
-				image.Visible = false
-			end
-		end
-	end
-	
-	function DynamicThumbstick:MoveStick(pos)
-		local vector2StartPosition = Vector2.new(self.moveTouchStartPosition.X, self.moveTouchStartPosition.Y)
-		local startPos = vector2StartPosition - self.thumbstickFrame.AbsolutePosition
-		local endPos = Vector2.new(pos.X, pos.Y) - self.thumbstickFrame.AbsolutePosition
-		self.endImage.Position = UDim2.new(0, endPos.X, 0, endPos.Y)
-		self:LayoutMiddleImages(startPos, endPos)
-	end
-	
-	function DynamicThumbstick:BindContextActions()
-		local function inputBegan(inputObject)
-			if self.moveTouchObject then
-				return Enum.ContextActionResult.Pass
-			end
-			
-			if not self:InputInFrame(inputObject) then
-				return Enum.ContextActionResult.Pass
-			end
-			
-			if self.isFirstTouch then
-				self.isFirstTouch = false
-				local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out,0,false,0)
-				TweenService:Create(self.startImage, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
-				TweenService:Create(
-					self.endImage,
-					tweenInfo,
-					{
-						Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize),
-						ImageColor3 = Color3.new(0,0,0)
-					}
-				):Play()
-			end
-			
-			self.moveTouchLockedIn = false
-			self.moveTouchObject = inputObject
-			self.moveTouchStartPosition = inputObject.Position
-			self.moveTouchFirstChanged = true
-			
-			if FADE_IN_OUT_BACKGROUND then
-				self:DoFadeInBackground()
-			end
-			
-			return Enum.ContextActionResult.Pass
-		end
-		
-		local function inputChanged(inputObject: InputObject)
-			if inputObject == self.moveTouchObject then
-				if self.moveTouchFirstChanged then
-					self.moveTouchFirstChanged = false
-					
-					local startPosVec2 = Vector2.new(
-						inputObject.Position.X - self.thumbstickFrame.AbsolutePosition.X,
-						inputObject.Position.Y - self.thumbstickFrame.AbsolutePosition.Y
-					)
-					self.startImage.Visible = true
-					self.startImage.Position = UDim2.new(0, startPosVec2.X, 0, startPosVec2.Y)
-					self.endImage.Visible = true
-					self.endImage.Position = self.startImage.Position
-					
-					self:FadeThumbstick(true)
-					self:MoveStick(inputObject.Position)
-				end
-				
-				self.moveTouchLockedIn = true
-				
-				local direction = Vector2.new(
-					inputObject.Position.X - self.moveTouchStartPosition.X,
-					inputObject.Position.Y - self.moveTouchStartPosition.Y
-				)
-				if math.abs(direction.X) > 0 or math.abs(direction.Y) > 0 then
-					self:DoMove(direction)
-					self:MoveStick(inputObject.Position)
-				end
-				return Enum.ContextActionResult.Sink
-			end
-			return Enum.ContextActionResult.Pass
-		end
-		
-		local function inputEnded(inputObject)
-			if inputObject == self.moveTouchObject then
-				self:OnInputEnded()
-				if self.moveTouchLockedIn then
-					return Enum.ContextActionResult.Sink
-				end
-			end
-			return Enum.ContextActionResult.Pass
-		end
-		
-		local function handleInput(actionName, inputState, inputObject)
-			if inputState == Enum.UserInputState.Begin then
-				return inputBegan(inputObject)
-			elseif inputState == Enum.UserInputState.Change then
-				return inputChanged(inputObject)
-			elseif inputState == Enum.UserInputState.End then
-				return inputEnded(inputObject)
-			elseif inputState == Enum.UserInputState.Cancel then
-				self:OnInputEnded()
-			end
-		end
-		
-		ContextActionService:BindActionAtPriority(
-			DYNAMIC_THUMBSTICK_ACTION_NAME,
-			handleInput,
-			false,
-			DYNAMIC_THUMBSTICK_ACTION_PRIORITY,
-			Enum.UserInputType.Touch)
-	end
-	
-	function DynamicThumbstick:Create(parentFrame: GuiBase2d)
-		if self.thumbstickFrame then
-			self.thumbstickFrame:Destroy()
-			self.thumbstickFrame = nil
-			if self.onRenderSteppedConn then
-				self.onRenderSteppedConn:Disconnect()
-				self.onRenderSteppedConn = nil
-			end
-		end
-		
-		self.thumbstickSize = 45
-		self.thumbstickRingSize = 20
-		self.middleSize = 10
-		self.middleSpacing = self.middleSize + 4
-		self.radiusOfDeadZone = 2
-		self.radiusOfMaxSpeed = 20
-		
-		local screenSize = parentFrame.AbsoluteSize
-		local isBigScreen = math.min(screenSize.X, screenSize.Y) > 500
-		if isBigScreen then
-			self.thumbstickSize *= 2
-			self.thumbstickRingSize *= 2
-			self.middleSize *= 2
-			self.middleSpacing *= 2
-			self.radiusOfDeadZone *= 2
-			self.radiusOfMaxSpeed *= 2
-		end
-		
-		local function layoutThumbstickFrame(portraitMode)
-			if portraitMode then
-				self.thumbstickFrame.Size = UDim2.new(1, 0, 0.4, 0)
-				self.thumbstickFrame.Position = UDim2.new(0, 0, 0.6, 0)
-			else
-				self.thumbstickFrame.Size = UDim2.new(0.4, 0, 2/3, 0)
-				self.thumbstickFrame.Position = UDim2.new(0, 0, 1/3, 0)
-			end
-		end
-		
-		self.thumbstickFrame = Instance.new("Frame")
-		self.thumbstickFrame.BorderSizePixel = 0
-		self.thumbstickFrame.Name = "DynamicThumbstickFrame"
-		self.thumbstickFrame.Visible = false
-		self.thumbstickFrame.BackgroundTransparency = 1.0
-		self.thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		self.thumbstickFrame.Active = false
-		layoutThumbstickFrame(false)
-		
-		self.startImage = Instance.new("ImageLabel")
-		self.startImage.Name = "ThumbstickStart"
-		self.startImage.Visible = true
-		self.startImage.BackgroundTransparency = 1
-		self.startImage.Image = TOUCH_CONTROLS_SHEET
-		self.startImage.ImageRectOffset = Vector2.new(1,1)
-		self.startImage.ImageRectSize = Vector2.new(144, 144)
-		self.startImage.ImageColor3 = Color3.new(0, 0, 0)
-		self.startImage.AnchorPoint = Vector2.new(0.5, 0.5)
-		self.startImage.Position = UDim2.new(0, self.thumbstickRingSize * 3.3, 1, -self.thumbstickRingSize  * 2.8)
-		self.startImage.Size = UDim2.new(0, self.thumbstickRingSize  * 3.7, 0, self.thumbstickRingSize  * 3.7)
-		self.startImage.ZIndex = 10
-		self.startImage.Parent = self.thumbstickFrame
-		
-		self.endImage = Instance.new("ImageLabel")
-		self.endImage.Name = "ThumbstickEnd"
-		self.endImage.Visible = true
-		self.endImage.BackgroundTransparency = 1
-		self.endImage.Image = TOUCH_CONTROLS_SHEET
-		self.endImage.ImageRectOffset = Vector2.new(1,1)
-		self.endImage.ImageRectSize =  Vector2.new(144, 144)
-		self.endImage.AnchorPoint = Vector2.new(0.5, 0.5)
-		self.endImage.Position = self.startImage.Position
-		self.endImage.Size = UDim2.new(0, self.thumbstickSize * 0.8, 0, self.thumbstickSize * 0.8)
-		self.endImage.ZIndex = 10
-		self.endImage.Parent = self.thumbstickFrame
-		
-		for i = 1, NUM_MIDDLE_IMAGES do
-			self.middleImages[i] = Instance.new("ImageLabel")
-			self.middleImages[i].Name = "ThumbstickMiddle"
-			self.middleImages[i].Visible = false
-			self.middleImages[i].BackgroundTransparency = 1
-			self.middleImages[i].Image = TOUCH_CONTROLS_SHEET
-			self.middleImages[i].ImageRectOffset = Vector2.new(1,1)
-			self.middleImages[i].ImageRectSize = Vector2.new(144, 144)
-			self.middleImages[i].ImageTransparency = MIDDLE_TRANSPARENCIES[i]
-			self.middleImages[i].AnchorPoint = Vector2.new(0.5, 0.5)
-			self.middleImages[i].ZIndex = 9
-			self.middleImages[i].Parent = self.thumbstickFrame
-		end
-		
-		local CameraChangedConn: RBXScriptConnection? = nil
-		local function onCurrentCameraChanged()
-			if CameraChangedConn then
-				CameraChangedConn:Disconnect()
-				CameraChangedConn = nil
-			end
-			local newCamera = workspace.CurrentCamera
-			if newCamera then
-				local function onViewportSizeChanged()
-					local size = newCamera.ViewportSize
-					local portraitMode = size.X < size.Y
-					layoutThumbstickFrame(portraitMode)
-				end
-				CameraChangedConn = newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportSizeChanged)
-				onViewportSizeChanged()
-			end
-		end
-		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(onCurrentCameraChanged)
-		if workspace.CurrentCamera then
-			onCurrentCameraChanged()
-		end
-		
-		self.moveTouchStartPosition = nil
-		
-		self.startImageFadeTween = nil
-		self.endImageFadeTween = nil
-		self.middleImageFadeTweens = {}
-		
-		self.onRenderSteppedConn = RunService.RenderStepped:Connect(function()
-			if self.tweenInAlphaStart ~= nil then
-				local delta = tick() - self.tweenInAlphaStart
-				
-				local fadeInTime = (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-				
-				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
-					* math.min(delta / fadeInTime, 1)
-				
-				if delta > fadeInTime then
-					self.tweenOutAlphaStart = tick()
-					self.tweenInAlphaStart = nil
-				end
-				
-			elseif self.tweenOutAlphaStart ~= nil then
-				local delta = tick() - self.tweenOutAlphaStart
-				
-				local fadeOutTime = (self.fadeInAndOutHalfDuration * 2)
-				- (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-				
-				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
-					+ FADE_IN_OUT_MAX_ALPHA * math.min(delta / fadeOutTime, 1)
-				
-				if delta > fadeOutTime  then
-					self.tweenOutAlphaStart = nil
-				end
-			end
-		end)
-		
-		self.onTouchEndedConn = UserInputService.TouchEnded:connect(function(inputObject: InputObject)
-			if inputObject == self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		GuiService.MenuOpened:connect(function()
-			if self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-		while not playerGui do
-			localPlayer.ChildAdded:wait()
-			playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-		end
-		
-		local playerGuiChangedConn = nil
-		local originalScreenOrientationWasLandscape =
-			playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft
-			or playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight
-		
-		local function longShowBackground()
-			self.fadeInAndOutHalfDuration = 2.5
-			self.fadeInAndOutBalance = 0.05
-			self.tweenInAlphaStart = tick()
-		end
-		
-		playerGuiChangedConn = playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(function()
-			if (originalScreenOrientationWasLandscape
-				and playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait)
-				or (not originalScreenOrientationWasLandscape
-					and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
-				
-				playerGuiChangedConn:disconnect()
-				longShowBackground()
-				
-				if originalScreenOrientationWasLandscape then
-					self.hasFadedBackgroundInPortrait = true
-				else
-					self.hasFadedBackgroundInLandscape = true
-				end
-			end
-		end)
-		
-		self.thumbstickFrame.Parent = parentFrame
-		
-		if game:IsLoaded() then
-			longShowBackground()
-		else
-			coroutine.wrap(function()
-				game.Loaded:Wait()
-				longShowBackground()
-			end)()
-		end
-	end
-	
-end
-
-
-local Gamepad = setmetatable({}, BaseCharacterController) do
-	Gamepad.__index = Gamepad
-	
-	--[[
-		Gamepad Character Control - This module handles controlling your avatar using a game console-style controller
-
-		2018 PlayerScripts Update - AllYourBlox
-	--]]
-	
-	local NONE = Enum.UserInputType.None
-	local thumbstickDeadzone = 0.2
-		
-	function Gamepad.new(CONTROL_ACTION_PRIORITY)
-		local self = setmetatable(BaseCharacterController.new() :: any, Gamepad)
-		
-		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
-		
-		self.forwardValue  = 0
-		self.backwardValue = 0
-		self.leftValue = 0
-		self.rightValue = 0
-		
-		self.activeGamepad = NONE	-- Enum.UserInputType.Gamepad1, 2, 3...
-		self.gamepadConnectedConn = nil
-		self.gamepadDisconnectedConn = nil
-		return self
-	end
-	
-	function Gamepad:Enable(enable: boolean): boolean
-		if not UserInputService.GamepadEnabled then
-			return false
-		end
-		
-		if enable == self.enabled then
-			-- Module is already in the state being requested. True is returned here since the module will be in the state
-			-- expected by the code that follows the Enable() call. This makes more sense than returning false to indicate
-			-- no action was necessary. False indicates failure to be in requested/expected state.
-			return true
-		end
-		
-		self.forwardValue  = 0
-		self.backwardValue = 0
-		self.leftValue = 0
-		self.rightValue = 0
-		self.moveVector = Vector3.zero
-		self.isJumping = false
-		
-		if enable then
-			self.activeGamepad = self:GetHighestPriorityGamepad()
-			if self.activeGamepad ~= NONE then
-				self:BindContextActions()
-				self:ConnectGamepadConnectionListeners()
-			else
-				-- No connected gamepads, failure to enable
-				return false
-			end
-		else
-			self:UnbindContextActions()
-			self:DisconnectGamepadConnectionListeners()
-			self.activeGamepad = NONE
-		end
-		
-		self.enabled = enable
-		return true
-	end
-	
-	-- This function selects the lowest number gamepad from the currently-connected gamepad
-	-- and sets it as the active gamepad
-	function Gamepad:GetHighestPriorityGamepad()
-		local connectedGamepads = UserInputService:GetConnectedGamepads()
-		local bestGamepad = NONE -- Note that this value is higher than all valid gamepad values
-		for _, gamepad in pairs(connectedGamepads) do
-			if gamepad.Value < bestGamepad.Value then
-				bestGamepad = gamepad
-			end
-		end
-		return bestGamepad
-	end
-	
-	function Gamepad:BindContextActions()
-		
-		if self.activeGamepad == NONE then
-			-- There must be an active gamepad to set up bindings
-			return false
-		end
-		
-		local handleJumpAction = function(actionName, inputState, inputObject)
-			self.isJumping = (inputState == Enum.UserInputState.Begin)
-			return Enum.ContextActionResult.Sink
-		end
-		
-		local handleThumbstickInput = function(actionName, inputState, inputObject)
-			
-			if inputState == Enum.UserInputState.Cancel then
-				self.moveVector = Vector3.zero
-				return Enum.ContextActionResult.Sink
-			end
-			
-			if self.activeGamepad ~= inputObject.UserInputType then
-				return Enum.ContextActionResult.Pass
-			end
-			
-			if inputObject.KeyCode ~= Enum.KeyCode.Thumbstick1 then return end
-			
-			if inputObject.Position.magnitude > thumbstickDeadzone then
-				self.moveVector = Vector3.new(inputObject.Position.X, 0, -inputObject.Position.Y)
-			else
-				self.moveVector = Vector3.zero
-			end
-			
-			return Enum.ContextActionResult.Sink
-		end
-		
-		ContextActionService:BindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
-		ContextActionService:BindActionAtPriority("jumpAction", handleJumpAction, false,
-			self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.ButtonA)
-		ContextActionService:BindActionAtPriority("moveThumbstick", handleThumbstickInput, false,
-			self.CONTROL_ACTION_PRIORITY, Enum.KeyCode.Thumbstick1)
-		
-		return true
-	end
-	
-	function Gamepad:UnbindContextActions()
-		if self.activeGamepad ~= NONE then
-			ContextActionService:UnbindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
-		end
-		ContextActionService:UnbindAction("moveThumbstick")
-		ContextActionService:UnbindAction("jumpAction")
-	end
-	
-	function Gamepad:OnNewGamepadConnected()
-		-- A new gamepad has been connected.
-		local bestGamepad: Enum.UserInputType = self:GetHighestPriorityGamepad()
-		
-		if bestGamepad == self.activeGamepad then
-			-- A new gamepad was connected, but our active gamepad is not changing
-			return
-		end
-		
-		if bestGamepad == NONE then
-			-- There should be an active gamepad when GamepadConnected fires, so this should not
-			-- normally be hit. If there is no active gamepad, unbind actions but leave
-			-- the module enabled and continue to listen for a new gamepad connection.
-			warn("Gamepad:OnNewGamepadConnected found no connected gamepads")
-			self:UnbindContextActions()
-			return
-		end
-		
-		if self.activeGamepad ~= NONE then
-			-- Switching from one active gamepad to another
-			self:UnbindContextActions()
-		end
-		
-		self.activeGamepad = bestGamepad
-		self:BindContextActions()
-	end
-	
-	function Gamepad:OnCurrentGamepadDisconnected()
-		if self.activeGamepad ~= NONE then
-			ContextActionService:UnbindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
-		end
-		
-		local bestGamepad = self:GetHighestPriorityGamepad()
-		
-		if self.activeGamepad ~= NONE and bestGamepad == self.activeGamepad then
-			warn("Gamepad:OnCurrentGamepadDisconnected found the supposedly disconnected gamepad in connectedGamepads.")
-			self:UnbindContextActions()
-			self.activeGamepad = NONE
-			return
-		end
-		
-		if bestGamepad == NONE then
-			-- No active gamepad, unbinding actions but leaving gamepad connection listener active
-			self:UnbindContextActions()
-			self.activeGamepad = NONE
-		else
-			-- Set new gamepad as active and bind to tool activation
-			self.activeGamepad = bestGamepad
-			ContextActionService:BindActivate(self.activeGamepad, Enum.KeyCode.ButtonR2)
-		end
-	end
-	
-	function Gamepad:ConnectGamepadConnectionListeners()
-		self.gamepadConnectedConn = UserInputService.GamepadConnected:Connect(function(gamepadEnum)
-			self:OnNewGamepadConnected()
-		end)
-		
-		self.gamepadDisconnectedConn = UserInputService.GamepadDisconnected:Connect(function(gamepadEnum)
-			if self.activeGamepad == gamepadEnum then
-				self:OnCurrentGamepadDisconnected()
-			end
-		end)
-		
-	end
-	
-	function Gamepad:DisconnectGamepadConnectionListeners()
-		if self.gamepadConnectedConn then
-			self.gamepadConnectedConn:Disconnect()
-			self.gamepadConnectedConn = nil
-		end
-		
-		if self.gamepadDisconnectedConn then
-			self.gamepadDisconnectedConn:Disconnect()
-			self.gamepadDisconnectedConn = nil
-		end
-	end
-	
-end
 
 
 local PathDisplay = {} do
@@ -9146,430 +9557,6 @@ local PathDisplay = {} do
 		end
 		
 		pointModel.Parent = workspace.CurrentCamera
-	end
-	
-end
-
-
-local TouchJump = setmetatable({}, BaseCharacterController) do
-	TouchJump.__index = TouchJump
-		
-	--[[
-		// FileName: TouchJump
-		// Version 1.0
-		// Written by: jmargh
-		// Description: Implements jump controls for touch devices. Use with Thumbstick and Thumbpad
-	--]]
-	
-	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/Input/TouchControlsSheetV2.png"
-		
-	function TouchJump.new()
-		local self = setmetatable(BaseCharacterController.new() :: any, TouchJump)
-		
-		self.parentUIFrame = nil
-		self.jumpButton = nil
-		self.characterAddedConn = nil
-		self.humanoidStateEnabledChangedConn = nil
-		self.humanoidJumpPowerConn = nil
-		self.humanoidParentConn = nil
-		self.externallyEnabled = false
-		self.jumpPower = 0
-		self.jumpStateEnabled = true
-		self.isJumping = false
-		self.humanoid = nil -- saved reference because property change connections are made using it
-		
-		return self
-	end
-	
-	function TouchJump:EnableButton(enable)
-		if enable then
-			if not self.jumpButton then
-				self:Create()
-			end
-			local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
-			if humanoid and self.externallyEnabled then
-				if self.externallyEnabled then
-					if humanoid.JumpPower > 0 then
-						self.jumpButton.Visible = true
-					end
-				end
-			end
-		else
-			self.jumpButton.Visible = false
-			self.isJumping = false
-			self.jumpButton.ImageRectOffset = Vector2.new(1, 146)
-		end
-	end
-	
-	function TouchJump:UpdateEnabled()
-		if self.jumpPower > 0 and self.jumpStateEnabled then
-			self:EnableButton(true)
-		else
-			self:EnableButton(false)
-		end
-	end
-	
-	function TouchJump:HumanoidChanged(prop)
-		local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			if prop == "JumpPower" then
-				self.jumpPower =  humanoid.JumpPower
-				self:UpdateEnabled()
-			elseif prop == "Parent" then
-				if not humanoid.Parent then
-					self.humanoidChangeConn:Disconnect()
-				end
-			end
-		end
-	end
-	
-	function TouchJump:HumanoidStateEnabledChanged(state, isEnabled)
-		if state == Enum.HumanoidStateType.Jumping then
-			self.jumpStateEnabled = isEnabled
-			self:UpdateEnabled()
-		end
-	end
-	
-	function TouchJump:CharacterAdded(char)
-		if self.humanoidChangeConn then
-			self.humanoidChangeConn:Disconnect()
-			self.humanoidChangeConn = nil
-		end
-		
-		self.humanoid = char:FindFirstChildOfClass("Humanoid")
-		while not self.humanoid do
-			char.ChildAdded:wait()
-			self.humanoid = char:FindFirstChildOfClass("Humanoid")
-		end
-		
-		self.humanoidJumpPowerConn = self.humanoid:GetPropertyChangedSignal("JumpPower"):Connect(function()
-			self.jumpPower =  self.humanoid.JumpPower
-			self:UpdateEnabled()
-		end)
-		
-		self.humanoidParentConn = self.humanoid:GetPropertyChangedSignal("Parent"):Connect(function()
-			if not self.humanoid.Parent then
-				self.humanoidJumpPowerConn:Disconnect()
-				self.humanoidJumpPowerConn = nil
-				self.humanoidParentConn:Disconnect()
-				self.humanoidParentConn = nil
-			end
-		end)
-		
-		self.humanoidStateEnabledChangedConn = self.humanoid.StateEnabledChanged:Connect(function(state, enabled)
-			self:HumanoidStateEnabledChanged(state, enabled)
-		end)
-		
-		self.jumpPower = self.humanoid.JumpPower
-		self.jumpStateEnabled = self.humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping)
-		self:UpdateEnabled()
-	end
-	
-	function TouchJump:SetupCharacterAddedFunction()
-		self.characterAddedConn = localPlayer.CharacterAdded:Connect(function(char)
-			self:CharacterAdded(char)
-		end)
-		if localPlayer.Character then
-			self:CharacterAdded(localPlayer.Character)
-		end
-	end
-	
-	function TouchJump:Enable(enable, parentFrame)
-		if parentFrame then
-			self.parentUIFrame = parentFrame
-		end
-		self.externallyEnabled = enable
-		self:EnableButton(enable)
-	end
-	
-	function TouchJump:Create()
-		if not self.parentUIFrame then
-			return
-		end
-		
-		if self.jumpButton then
-			self.jumpButton:Destroy()
-			self.jumpButton = nil
-		end
-		
-		local minAxis = math.min(self.parentUIFrame.AbsoluteSize.x, self.parentUIFrame.AbsoluteSize.y)
-		local isSmallScreen = minAxis <= 500
-		local jumpButtonSize = isSmallScreen and 70 or 120
-		
-		self.jumpButton = Instance.new("ImageButton")
-		self.jumpButton.Name = "JumpButton"
-		self.jumpButton.Visible = false
-		self.jumpButton.BackgroundTransparency = 1
-		self.jumpButton.Image = TOUCH_CONTROL_SHEET
-		self.jumpButton.ImageRectOffset = Vector2.new(1, 146)
-		self.jumpButton.ImageRectSize = Vector2.new(144, 144)
-		self.jumpButton.Size = UDim2.new(0, jumpButtonSize, 0, jumpButtonSize)
-		
-		self.jumpButton.Position = isSmallScreen
-			and UDim2.new(1, -(jumpButtonSize * 1.5 - 10), 1, -jumpButtonSize - 20)
-			or UDim2.new(1, -(jumpButtonSize * 1.5 - 10), 1, -jumpButtonSize * 1.75)
-		
-		local touchObject: InputObject? = nil
-		self.jumpButton.InputBegan:connect(function(inputObject)
-			--A touch that starts elsewhere on the screen will be sent to a frame's InputBegan event
-			--if it moves over the frame. So we check that this is actually a new touch (inputObject.UserInputState ~= Enum.UserInputState.Begin)
-			if touchObject or inputObject.UserInputType ~= Enum.UserInputType.Touch
-				or inputObject.UserInputState ~= Enum.UserInputState.Begin then
-				return
-			end
-			
-			touchObject = inputObject
-			self.jumpButton.ImageRectOffset = Vector2.new(146, 146)
-			self.isJumping = true
-		end)
-		
-		local OnInputEnded = function()
-			touchObject = nil
-			self.isJumping = false
-			self.jumpButton.ImageRectOffset = Vector2.new(1, 146)
-		end
-		
-		self.jumpButton.InputEnded:connect(function(inputObject: InputObject)
-			if inputObject == touchObject then
-				OnInputEnded()
-			end
-		end)
-		
-		GuiService.MenuOpened:connect(function()
-			if touchObject then
-				OnInputEnded()
-			end
-		end)
-		
-		if not self.characterAddedConn then
-			self:SetupCharacterAddedFunction()
-		end
-		
-		self.jumpButton.Parent = self.parentUIFrame
-	end
-	
-end
-
-
-local TouchThumbstick = setmetatable({}, BaseCharacterController) do
-	TouchThumbstick.__index = TouchThumbstick
-	
-	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
-	
-	function TouchThumbstick.new()
-		local self = setmetatable(BaseCharacterController.new() :: any, TouchThumbstick)
-		
-		self.isFollowStick = false
-		
-		self.thumbstickFrame = nil
-		self.moveTouchObject = nil
-		self.onTouchMovedConn = nil
-		self.onTouchEndedConn = nil
-		self.screenPos = nil
-		self.stickImage = nil
-		self.thumbstickSize = nil -- Float
-		
-		return self
-	end
-	
-	function TouchThumbstick:Enable(enable: boolean?, uiParentFrame)
-		-- If nil, return false (invalid argument)
-		if enable == nil then return false end
-		
-		-- Force anything non-nil to boolean before comparison
-		enable = enable and true or false
-		
-		-- If no state change, return true indicating already in requested state
-		if self.enabled == enable then return true end
-		
-		self.moveVector = Vector3.zero
-		self.isJumping = false
-		
-		if enable then
-			-- Enable
-			if not self.thumbstickFrame then
-				self:Create(uiParentFrame)
-			end
-			self.thumbstickFrame.Visible = true
-		else
-			-- Disable
-			self.thumbstickFrame.Visible = false
-			self:OnInputEnded()
-		end
-		self.enabled = enable
-	end
-	
-	function TouchThumbstick:OnInputEnded()
-		self.thumbstickFrame.Position = self.screenPos
-		self.stickImage.Position = UDim2.new(
-			0,
-			self.thumbstickFrame.Size.X.Offset / 2 - self.thumbstickSize / 4,
-			0,
-			self.thumbstickFrame.Size.Y.Offset / 2 - self.thumbstickSize / 4
-		)
-		
-		self.moveVector = Vector3.zero
-		self.isJumping = false
-		self.thumbstickFrame.Position = self.screenPos
-		self.moveTouchObject = nil
-	end
-	
-	function TouchThumbstick:Create(parentFrame)
-		
-		if self.thumbstickFrame then
-			self.thumbstickFrame:Destroy()
-			self.thumbstickFrame = nil
-			if self.onTouchMovedConn then
-				self.onTouchMovedConn:Disconnect()
-				self.onTouchMovedConn = nil
-			end
-			if self.onTouchEndedConn then
-				self.onTouchEndedConn:Disconnect()
-				self.onTouchEndedConn = nil
-			end
-		end
-		
-		local minAxis = math.min(parentFrame.AbsoluteSize.X, parentFrame.AbsoluteSize.Y)
-		local isSmallScreen = minAxis <= 500
-		self.thumbstickSize = isSmallScreen and 70 or 120
-		self.screenPos = isSmallScreen
-			and UDim2.new(0, (self.thumbstickSize / 2) - 10, 1, -self.thumbstickSize - 20)
-			or UDim2.new(0, self.thumbstickSize / 2, 1, -self.thumbstickSize * 1.75)
-		
-		self.thumbstickFrame = Instance.new("Frame")
-		self.thumbstickFrame.Name = "ThumbstickFrame"
-		self.thumbstickFrame.Active = true
-		self.thumbstickFrame.Visible = false
-		self.thumbstickFrame.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
-		self.thumbstickFrame.Position = self.screenPos
-		self.thumbstickFrame.BackgroundTransparency = 1
-		
-		local outerImage = Instance.new("ImageLabel")
-		outerImage.Name = "OuterImage"
-		outerImage.Image = TOUCH_CONTROL_SHEET
-		outerImage.ImageRectOffset = Vector2.new()
-		outerImage.ImageRectSize = Vector2.new(220, 220)
-		outerImage.BackgroundTransparency = 1
-		outerImage.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
-		outerImage.Position = UDim2.new(0, 0, 0, 0)
-		outerImage.Parent = self.thumbstickFrame
-		
-		self.stickImage = Instance.new("ImageLabel")
-		self.stickImage.Name = "StickImage"
-		self.stickImage.Image = TOUCH_CONTROL_SHEET
-		self.stickImage.ImageRectOffset = Vector2.new(220, 0)
-		self.stickImage.ImageRectSize = Vector2.new(111, 111)
-		self.stickImage.BackgroundTransparency = 1
-		self.stickImage.Size = UDim2.new(0, self.thumbstickSize / 2, 0, self.thumbstickSize / 2)
-		self.stickImage.Position = UDim2.new(
-			0,
-			self.thumbstickSize / 2 - self.thumbstickSize / 4,
-			0,
-			self.thumbstickSize / 2 - self.thumbstickSize / 4
-		)
-		self.stickImage.ZIndex = 2
-		self.stickImage.Parent = self.thumbstickFrame
-		
-		local centerPosition = nil
-		local deadZone = 0.05
-		
-		local function DoMove(direction: Vector2)
-			
-			local currentMoveVector = direction / (self.thumbstickSize/2)
-			
-			-- Scaled Radial Dead Zone
-			local inputAxisMagnitude = currentMoveVector.magnitude
-			if inputAxisMagnitude < deadZone then
-				currentMoveVector = Vector3.zero
-			else
-				currentMoveVector = currentMoveVector.unit * ((inputAxisMagnitude - deadZone) / (1 - deadZone))
-				-- NOTE: Making currentMoveVector a unit vector will cause the player to instantly go max speed
-				-- must check for zero length vector is using unit
-				currentMoveVector = Vector3.new(currentMoveVector.X, 0, currentMoveVector.Y)
-			end
-			
-			self.moveVector = currentMoveVector
-		end
-		
-		local function MoveStick(pos: Vector3)
-			local relativePosition = Vector2.new(pos.X - centerPosition.X, pos.Y - centerPosition.Y)
-			local length = relativePosition.magnitude
-			local maxLength = self.thumbstickFrame.AbsoluteSize.X/2
-			if self.isFollowStick and length > maxLength then
-				local offset = relativePosition.unit * maxLength
-				self.thumbstickFrame.Position = UDim2.new(
-					0, pos.X - self.thumbstickFrame.AbsoluteSize.X/2 - offset.X,
-					0, pos.Y - self.thumbstickFrame.AbsoluteSize.Y/2 - offset.Y)
-			else
-				length = math.min(length, maxLength)
-				relativePosition = relativePosition.unit * length
-			end
-			self.stickImage.Position = UDim2.new(
-				0,
-				relativePosition.X + self.stickImage.AbsoluteSize.X / 2,
-				0,
-				relativePosition.Y + self.stickImage.AbsoluteSize.Y / 2
-			)
-		end
-		
-		-- input connections
-		self.thumbstickFrame.InputBegan:Connect(function(inputObject: InputObject)
-			--A touch that starts elsewhere on the screen will be sent to a frame's InputBegan event
-			--if it moves over the frame. So we check that this is actually a new touch (inputObject.UserInputState ~= Enum.UserInputState.Begin)
-			if self.moveTouchObject or inputObject.UserInputType ~= Enum.UserInputType.Touch
-				or inputObject.UserInputState ~= Enum.UserInputState.Begin then
-				return
-			end
-			
-			self.moveTouchObject = inputObject
-			self.thumbstickFrame.Position = UDim2.new(
-				0,
-				inputObject.Position.X - self.thumbstickFrame.Size.X.Offset / 2,
-				0,
-				inputObject.Position.Y - self.thumbstickFrame.Size.Y.Offset / 2
-			)
-			
-			centerPosition = Vector2.new(
-				self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
-				self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
-			)
-			
-			local direction = Vector2.new(
-				inputObject.Position.X - centerPosition.X,
-				inputObject.Position.Y - centerPosition.Y
-			)
-		end)
-		
-		self.onTouchMovedConn = UserInputService.TouchMoved:Connect(
-			function(inputObject: InputObject, isProcessed: boolean)
-				if inputObject == self.moveTouchObject then
-					centerPosition = Vector2.new(
-						self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
-						self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
-					)
-					local direction = Vector2.new(
-						inputObject.Position.X - centerPosition.X,
-						inputObject.Position.Y - centerPosition.Y
-					)
-					DoMove(direction)
-					MoveStick(inputObject.Position)
-				end
-			end
-		)
-		
-		self.onTouchEndedConn = UserInputService.TouchEnded:Connect(function(inputObject, isProcessed)
-			if inputObject == self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		GuiService.MenuOpened:Connect(function()
-			if self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		self.thumbstickFrame.Parent = parentFrame
 	end
 	
 end
@@ -10028,6 +10015,7 @@ local VRNavigation = setmetatable({}, BaseCharacterController) do
 	end
 	
 end
+
 
 local VehicleController = {} do
 	VehicleController.__index = VehicleController
@@ -10813,7 +10801,8 @@ local PlayerModule = {} do
 	function PlayerModule.new()
 		local self = setmetatable({},PlayerModule)
 		self.cameras = CameraModule.new()
-		self.controls = ControlModule.new()
+		controlModule = ControlModule.new()
+		self.controls = controlModule
 		return self
 	end
 
