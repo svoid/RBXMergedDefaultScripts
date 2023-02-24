@@ -5608,7 +5608,10 @@ end)()
 
 
 
-local REQUIRE_CameraModule = (function()
+
+local CameraModule = {} do
+	CameraModule.__index = CameraModule
+	
 	--[[
 		CameraModule - This ModuleScript implements a singleton class to manage the
 		selection, activation, and deactivation of the current camera controller,
@@ -5622,10 +5625,7 @@ local REQUIRE_CameraModule = (function()
 
 		2018 PlayerScripts Update - AllYourBlox
 	--]]
-
-	local CameraModule = {}
-	CameraModule.__index = CameraModule
-
+	
 	-- NOTICE: Player property names do not all match their StarterPlayer equivalents,
 	-- with the differences noted in the comments on the right
 	local PLAYER_CAMERA_PROPERTIES =
@@ -6182,11 +6182,9 @@ local REQUIRE_CameraModule = (function()
 		end
 	end
 
-	local cameraModuleObject = CameraModule.new()
+end
 
-	return {}
-end)()
-
+local cameraModuleObject = CameraModule.new()
 
 
 
@@ -10630,7 +10628,7 @@ local PlayerModule = {} do
 
 	function PlayerModule.new()
 		local self = setmetatable({},PlayerModule)
-		self.cameras = REQUIRE_CameraModule
+		self.cameras = {}
 		self.controls = ControlModule.new()
 		return self
 	end
