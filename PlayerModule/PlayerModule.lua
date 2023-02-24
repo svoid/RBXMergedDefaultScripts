@@ -4829,9 +4829,7 @@ local VEHICLE_CAMERA_CONFIG = {
 	verticalCenterOffset = 0.33,
 }
 
-
 local VehicleCameraCore do
-	local VehicleCameraConfig = VEHICLE_CAMERA_CONFIG
 	
 	local map = CameraUtils.map
 	local mapClamp = CameraUtils.mapClamp
@@ -4914,13 +4912,13 @@ local VehicleCameraCore do
 				
 				-- yaw/pitch response springs
 				fSpringYaw = VariableEdgeSpring.new(
-					VehicleCameraConfig.yawReponseDampingRising,
-					VehicleCameraConfig.yawResponseDampingFalling,
+					VEHICLE_CAMERA_CONFIG.yawReponseDampingRising,
+					VEHICLE_CAMERA_CONFIG.yawResponseDampingFalling,
 					0
 				),
 				fSpringPitch = VariableEdgeSpring.new(
-					VehicleCameraConfig.pitchReponseDampingRising,
-					VehicleCameraConfig.pitchResponseDampingFalling,
+					VEHICLE_CAMERA_CONFIG.pitchReponseDampingRising,
+					VEHICLE_CAMERA_CONFIG.pitchResponseDampingFalling,
 					0
 				),
 			}, YawPitchSpring)
@@ -4950,25 +4948,25 @@ local VehicleCameraCore do
 			-- calculate the frequency spring
 			fSpringYaw.g = mapClamp(
 				map(firstPerson, 0, 1, yawVel, 0),
-				math.rad(VehicleCameraConfig.cutoffMinAngularVelYaw),
-				math.rad(VehicleCameraConfig.cutoffMaxAngularVelYaw),
+				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMinAngularVelYaw),
+				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMaxAngularVelYaw),
 				1, 0
 			)
 			
 			fSpringPitch.g = mapClamp(
 				map(firstPerson, 0, 1, pitchVel, 0),
-				math.rad(VehicleCameraConfig.cutoffMinAngularVelPitch),
-				math.rad(VehicleCameraConfig.cutoffMaxAngularVelPitch),
+				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMinAngularVelPitch),
+				math.rad(VEHICLE_CAMERA_CONFIG.cutoffMaxAngularVelPitch),
 				1, 0
 			)
 			
 			-- calculate final frequencies
-			local fYaw = 2*math.pi*VehicleCameraConfig.yawStiffness*fSpringYaw:step(dt)
-			local fPitch = 2*math.pi*VehicleCameraConfig.pitchStiffness*fSpringPitch:step(dt)
+			local fYaw = 2*math.pi*VEHICLE_CAMERA_CONFIG.yawStiffness*fSpringYaw:step(dt)
+			local fPitch = 2*math.pi*VEHICLE_CAMERA_CONFIG.pitchStiffness*fSpringPitch:step(dt)
 			
 			-- adjust response for first person
-			fPitch *= map(firstPerson, 0, 1, 1, VehicleCameraConfig.firstPersonResponseMul)
-			fYaw *= map(firstPerson, 0, 1, 1, VehicleCameraConfig.firstPersonResponseMul)
+			fPitch *= map(firstPerson, 0, 1, 1, VEHICLE_CAMERA_CONFIG.firstPersonResponseMul)
+			fYaw *= map(firstPerson, 0, 1, 1, VEHICLE_CAMERA_CONFIG.firstPersonResponseMul)
 			
 			-- step yaw
 			self.yawP, self.yawV = stepSpringAxis(
