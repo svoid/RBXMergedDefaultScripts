@@ -1,5 +1,10 @@
 
+local userSettings = UserSettings()
 
+local function getFastFlag(name)
+	local success, result = pcall(userSettings.IsUserFeatureEnabled, userSettings, name)
+	return success and result
+end
 
 local REQUIRE_CameraUtils = (function()
 	--[[
@@ -9,7 +14,7 @@ local REQUIRE_CameraUtils = (function()
 	
 	local Players = game:GetService("Players")
 	local UserInputService = game:GetService("UserInputService")
-	local UserGameSettings = UserSettings():GetService("UserGameSettings")
+	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	local CameraUtils = {}
 	
@@ -808,7 +813,7 @@ local REQUIRE_CameraInput = (function()
 	local UserInputService = game:GetService("UserInputService")
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
-	local UserGameSettings = UserSettings():GetService("UserGameSettings")
+	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	local VRService = game:GetService("VRService")
 	local StarterGui = game:GetService("StarterGui")
 	
@@ -829,13 +834,7 @@ local REQUIRE_CameraInput = (function()
 	
 	local MIN_TOUCH_SENSITIVITY_FRACTION = 0.25 -- 25% sensitivity at 90°
 	
-	local FFlagUserResetTouchStateOnMenuOpen
-	do
-		local success, result = pcall(function()
-			return UserSettings():IsUserFeatureEnabled("UserResetTouchStateOnMenuOpen")
-		end)
-		FFlagUserResetTouchStateOnMenuOpen = success and result
-	end
+	local FFlagUserResetTouchStateOnMenuOpen = getFastFlag("UserResetTouchStateOnMenuOpen")
 	
 	-- right mouse button up & down events
 	local rmbDown, rmbUp do
@@ -1373,13 +1372,7 @@ local REQUIRE_CameraUI = (function()
 	local TweenService = game:GetService("TweenService")
 	local StarterGui = game:GetService("StarterGui")
 	
-	local FFlagUserEnableCameraToggleNotification
-	do
-		local success, result = pcall(function()
-			return UserSettings():IsUserFeatureEnabled("UserEnableCameraToggleNotification")
-		end)
-		FFlagUserEnableCameraToggleNotification = success and result
-	end
+	local FFlagUserEnableCameraToggleNotification = getFastFlag("UserEnableCameraToggleNotification")
 	
 	local LocalPlayer = Players.LocalPlayer
 	if not LocalPlayer then
@@ -1598,7 +1591,7 @@ end)()
 local REQUIRE_CameraToggleStateController = (function()
 	local Players = game:GetService("Players")
 	local UserInputService = game:GetService("UserInputService")
-	local GameSettings = UserSettings():GetService("UserGameSettings")
+	local GameSettings = userSettings:GetService("UserGameSettings")
 	
 	local Input = REQUIRE_CameraInput
 	local CameraUI = REQUIRE_CameraUI
@@ -1729,7 +1722,7 @@ local REQUIRE_BaseCamera = (function()
 	local UserInputService = game:GetService("UserInputService")
 	local StarterGui = game:GetService("StarterGui")
 	local VRService = game:GetService("VRService")
-	local UserGameSettings = UserSettings():GetService("UserGameSettings")
+	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	local player = Players.LocalPlayer
 	
@@ -3495,7 +3488,7 @@ local REQUIRE_MouseLockController = (function()
 	--[[ Services ]]--
 	local PlayersService = game:GetService("Players")
 	local ContextActionService = game:GetService("ContextActionService")
-	local Settings = UserSettings()	-- ignore warning
+	local Settings = userSettings	-- ignore warning
 	local GameSettings = Settings.GameSettings
 	
 	--[[ Imports ]]
@@ -4324,14 +4317,9 @@ local REQUIRE_VRBaseCamera = (function()
 	local Lighting = game:GetService("Lighting")
 	local RunService = game:GetService("RunService")
 	
-	local UserGameSettings = UserSettings():GetService("UserGameSettings")
+	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
-	local FFlagUserVRApplyHeadScaleToHandPositions do
-		local success, result = pcall(function()
-			return UserSettings():IsUserFeatureEnabled("UserVRApplyHeadScaleToHandPositions")
-		end)
-		FFlagUserVRApplyHeadScaleToHandPositions = success and result
-	end
+	local FFlagUserVRApplyHeadScaleToHandPositions = getFastFlag("UserVRApplyHeadScaleToHandPositions")
 	
 	--[[ The Module ]]--
 	local BaseCamera = REQUIRE_BaseCamera
@@ -4669,7 +4657,7 @@ local REQUIRE_VRCamera = (function()
 	--[[ Services ]]--
 	local PlayersService = game:GetService("Players")
 	local VRService = game:GetService("VRService")
-	local UserGameSettings = UserSettings():GetService("UserGameSettings")
+	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	
 	-- Local private variables and constants
 	local CAMERA_BLACKOUT_TIME = 0.1
@@ -4684,12 +4672,7 @@ local REQUIRE_VRCamera = (function()
 	local VRCamera = setmetatable({}, VRBaseCamera)
 	VRCamera.__index = VRCamera
 	
-	local FFlagUserFlagEnableVRUpdate3 do
-		local success, result = pcall(function()
-			return UserSettings():IsUserFeatureEnabled("UserFlagEnableVRUpdate3")
-		end)
-		FFlagUserFlagEnableVRUpdate3 = success and result
-	end
+	local FFlagUserFlagEnableVRUpdate3 = getFastFlag("UserFlagEnableVRUpdate3")
 	
 	function VRCamera.new()
 		local self = setmetatable(VRBaseCamera.new(), VRCamera)
@@ -5687,7 +5670,7 @@ local REQUIRE_CameraModule = (function()
 	local RunService = game:GetService("RunService")
 	local UserInputService = game:GetService("UserInputService")
 	local VRService = game:GetService("VRService")
-	local UserGameSettings = UserSettings():GetService("UserGameSettings")
+	local UserGameSettings = userSettings:GetService("UserGameSettings")
 
 	-- Static camera utils
 	local CameraUtils = REQUIRE_CameraUtils
@@ -6952,13 +6935,8 @@ local REQUIRE_ClickToMoveController = (function()
 --]]
 	
 	--[[ Flags ]]
-	local FFlagUserExcludeNonCollidableForPathfindingSuccess, FFlagUserExcludeNonCollidableForPathfindingResult =
-		pcall(function() return UserSettings():IsUserFeatureEnabled("UserExcludeNonCollidableForPathfinding") end)
-	local FFlagUserExcludeNonCollidableForPathfinding = FFlagUserExcludeNonCollidableForPathfindingSuccess and FFlagUserExcludeNonCollidableForPathfindingResult
-	
-	local FFlagUserClickToMoveSupportAgentCanClimbSuccess, FFlagUserClickToMoveSupportAgentCanClimbResult =
-		pcall(function() return UserSettings():IsUserFeatureEnabled("UserClickToMoveSupportAgentCanClimb2") end)
-	local FFlagUserClickToMoveSupportAgentCanClimb = FFlagUserClickToMoveSupportAgentCanClimbSuccess and FFlagUserClickToMoveSupportAgentCanClimbResult
+	local FFlagUserExcludeNonCollidableForPathfinding = getFastFlag("UserExcludeNonCollidableForPathfinding")
+	local FFlagUserClickToMoveSupportAgentCanClimb = getFastFlag("UserClickToMoveSupportAgentCanClimb2")
 	
 	--[[ Roblox Services ]]--
 	local Players = game:GetService("Players")
@@ -10185,7 +10163,7 @@ REQUIRE_ControlModule = (function()
 	local UserInputService = game:GetService("UserInputService")
 	local GuiService = game:GetService("GuiService")
 	local Workspace = game:GetService("Workspace")
-	local UserGameSettings = UserSettings():GetService("UserGameSettings")
+	local UserGameSettings = userSettings:GetService("UserGameSettings")
 	local VRService = game:GetService("VRService")
 	
 	-- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
@@ -10193,12 +10171,7 @@ REQUIRE_ControlModule = (function()
 	local Gamepad = REQUIRE_Gamepad
 	local DynamicThumbstick = REQUIRE_DynamicThumbstick
 	
-	local FFlagUserHideControlsWhenMenuOpen do
-		local success, result = pcall(function()
-			return UserSettings():IsUserFeatureEnabled("UserHideControlsWhenMenuOpen")
-		end)
-		FFlagUserHideControlsWhenMenuOpen = success and result
-	end
+	local FFlagUserHideControlsWhenMenuOpen = getFastFlag("UserHideControlsWhenMenuOpen")
 	
 	local TouchThumbstick = REQUIRE_TouchThumbstick
 	
