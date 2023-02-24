@@ -6747,27 +6747,17 @@ local REQUIRE_ClickToMoveDisplay = (function()
 end)()
 
 
-local REQUIRE_Keyboard = (function()
---[[
-	Keyboard Character Control - This module handles controlling your avatar from a keyboard
-
-	2018 PlayerScripts Update - AllYourBlox
---]]
-	
-	--[[ Roblox Services ]]--
-	local UserInputService = game:GetService("UserInputService")
-	local ContextActionService = game:GetService("ContextActionService")
-	
-	--[[ Constants ]]--
-	local ZERO_VECTOR3 = Vector3.new(0,0,0)
-	
-	--[[ The Module ]]--
-	local BaseCharacterController = REQUIRE_BaseCharacterController
-	local Keyboard = setmetatable({}, BaseCharacterController)
+local Keyboard = setmetatable({}, REQUIRE_BaseCharacterController) do
 	Keyboard.__index = Keyboard
 	
+	--[[
+		Keyboard Character Control - This module handles controlling your avatar from a keyboard
+
+		2018 PlayerScripts Update - AllYourBlox
+	--]]
+	
 	function Keyboard.new(CONTROL_ACTION_PRIORITY)
-		local self = setmetatable(BaseCharacterController.new() :: any, Keyboard)
+		local self = setmetatable(REQUIRE_BaseCharacterController.new() :: any, Keyboard)
 		
 		self.CONTROL_ACTION_PRIORITY = CONTROL_ACTION_PRIORITY
 		
@@ -6785,6 +6775,8 @@ local REQUIRE_Keyboard = (function()
 		return self
 	end
 	
+	local UserInputService = game:GetService("UserInputService")
+	
 	function Keyboard:Enable(enable: boolean)
 		if not UserInputService.KeyboardEnabled then
 			return false
@@ -6801,7 +6793,7 @@ local REQUIRE_Keyboard = (function()
 		self.backwardValue = 0
 		self.leftValue = 0
 		self.rightValue = 0
-		self.moveVector = ZERO_VECTOR3
+		self.moveVector = Vector3.zero
 		self.jumpRequested = false
 		self:UpdateJump()
 		
@@ -6819,7 +6811,7 @@ local REQUIRE_Keyboard = (function()
 	
 	function Keyboard:UpdateMovement(inputState)
 		if inputState == Enum.UserInputState.Cancel then
-			self.moveVector = ZERO_VECTOR3
+			self.moveVector = Vector3.zero
 		else
 			self.moveVector = Vector3.new(self.leftValue + self.rightValue, 0, self.forwardValue + self.backwardValue)
 		end
@@ -6828,6 +6820,8 @@ local REQUIRE_Keyboard = (function()
 	function Keyboard:UpdateJump()
 		self.isJumping = self.jumpRequested
 	end
+	
+	local ContextActionService = game:GetService("ContextActionService")
 	
 	function Keyboard:BindContextActions()
 		
@@ -6889,7 +6883,7 @@ local REQUIRE_Keyboard = (function()
 	
 	function Keyboard:ConnectFocusEventListeners()
 		local function onFocusReleased()
-			self.moveVector = ZERO_VECTOR3
+			self.moveVector = Vector3.zero
 			self.forwardValue  = 0
 			self.backwardValue = 0
 			self.leftValue = 0
@@ -6922,13 +6916,10 @@ local REQUIRE_Keyboard = (function()
 			self.windowFocusReleasedConn = nil
 		end
 	end
-	
-	return Keyboard
-	
-end)()
+end
 
 
-local ClickToMove = setmetatable({}, REQUIRE_Keyboard) do
+local ClickToMove = setmetatable({}, Keyboard) do
 	ClickToMove.__index = ClickToMove
 	
 	--[[
@@ -7762,7 +7753,7 @@ local ClickToMove = setmetatable({}, REQUIRE_Keyboard) do
 	
 
 	function ClickToMove.new(CONTROL_ACTION_PRIORITY)
-		local self = setmetatable(REQUIRE_Keyboard.new(CONTROL_ACTION_PRIORITY), ClickToMove)
+		local self = setmetatable(Keyboard.new(CONTROL_ACTION_PRIORITY), ClickToMove)
 		
 		self.fingerTouches = {}
 		self.numUnsunkTouches = 0
@@ -10153,7 +10144,6 @@ REQUIRE_ControlModule = (function()
 	local VRService = game:GetService("VRService")
 	
 	-- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
-	local Keyboard = REQUIRE_Keyboard
 	local Gamepad = REQUIRE_Gamepad
 	local DynamicThumbstick = REQUIRE_DynamicThumbstick
 	
