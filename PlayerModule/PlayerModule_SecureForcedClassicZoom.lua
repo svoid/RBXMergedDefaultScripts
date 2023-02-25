@@ -19,6 +19,171 @@ local UserGameSettings = userSettings:GetService("UserGameSettings")
 
 local localPlayer = Players.LocalPlayer
 
+local cameraModule
+local controlModule
+
+local CharacterContainer = {} do
+	CharacterContainer.__index = CharacterContainer
+	
+	function CharacterContainer.new()
+		local self = setmetatable({}, CharacterContainer)
+		
+		self.Characters = {}
+		
+		return self
+	end
+	
+	function CharacterContainer:_GetIter(character)
+		return table.find(self.Characters, character)
+	end
+	
+	function CharacterContainer:Add(character)
+		assert(self:_GetIter(character) == nil, "character is already in array")
+		table.insert(self.Characters, character)
+	end
+	
+	function CharacterContainer:Remove(character)
+		local pos = self:_GetIter(character)
+		assert(pos, "character is not in array")
+		table.remove(self.Characters, pos)
+	end
+end
+
+local characterContainer = CharacterContainer.new()
+
+local Player = {} do
+	Player.__index = Player
+	
+	function Player.new(playerObject)
+		local self = setmetatable({}, Player)
+		
+		self.Character = nil
+		self.PlayerObject = playerObject
+		self.Humanoid = nil
+		
+		playerObject.CharacterAdded:Connect(function(character)
+			self:OnCharacterAdded(character)
+		end)
+		
+		playerObject.CharacterRemoving:Connect(function(character)
+			self:OnCharacterRemoving(character)
+		end)
+		
+		return self
+	end
+	
+	function Player:Destroy()
+		self.Character = nil
+		self.PlayerObject = nil
+		self.Humanoid = nil
+	end
+	
+	function Player:GetRootPart()
+		local humanoid = self.Humanoid
+		return humanoid and humanoid.RootPart or nil
+	end
+	
+	function Player:OnCharacterAdded(character)
+		self.Character = character
+		characterContainer:Add(character)
+		self.Humanoid = character:FindFirstChildOfClass("Humanoid")
+		while not self.Humanoid do
+			local child = character.ChildAdded:Wait()
+			if child:IsA("Humanoid") then
+				self.Humanoid = child
+			end
+		end
+	end
+	
+	function Player:OnCharacterRemoving(character)
+		characterContainer:Remove(character)
+		self.Character = nil
+		self.Humanoid = nil
+	end
+end
+
+local LocalPlayerHandler = {} do
+	LocalPlayerHandler.__index = LocalPlayerHandler
+	
+	LocalPlayerHandler.GetRootPart = Player.GetRootPart
+	LocalPlayerHandler.Destroy = Player.Destroy
+	
+	function LocalPlayerHandler.new(playerObject)
+		local self = setmetatable(Player.new(playerObject), LocalPlayerHandler)
+		
+		self.PlayerGui = nil
+		
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		if playerGui then
+			self.PlayerGui = playerGui
+		else
+			local playerGuiAddedConn
+			playerGuiAddedConn = localPlayer.ChildAdded:Connect(function(child)
+				if child:IsA("PlayerGui") then
+					playerGuiAddedConn:Disconnect()
+					self.PlayerGui = child
+					controlModule:OnPlayerGuiAdded()
+				end
+			end)
+		end
+		
+		return self
+	end
+	
+	function LocalPlayerHandler:OnCharacterAdded(character)
+		Player.OnCharacterAdded(self, character)
+		
+		controlModule:UpdateTouchGuiVisibility(character)
+	end
+	
+	function LocalPlayerHandler:OnCharacterRemoving(character)
+		Player.OnCharacterRemoving(self, character)
+		
+		controlModule:UpdateTouchGuiVisibility()
+	end
+end
+
+local PlayerHandler = {} do
+	PlayerHandler.__index = PlayerHandler
+	
+	function PlayerHandler.new()
+		local self = setmetatable({}, PlayerHandler)
+		
+		self.PlayerMap = {}
+		
+		for _, player in next, Players:GetPlayers() do
+			if player ~= localPlayer then
+				self:OnPlayerAdded(player)
+			end
+		end
+		
+		self.LocalPlayer = LocalPlayerHandler.new(localPlayer)
+		self.PlayerMap[localPlayer] = self.LocalPlayer
+		
+		Players.PlayerAdded:Connect(function(playerObject)
+			self:OnPlayerAdded(playerObject)
+		end)
+		
+		Players.PlayerRemoving:Connect(function(playerObject)
+			self:OnPlayerRemoving(playerObject)
+		end)
+		
+		return self
+	end
+	
+	function PlayerHandler:OnPlayerAdded(playerObject)
+		self.PlayerMap[playerObject] = Player.new(playerObject)
+	end
+	
+	function PlayerHandler:OnPlayerRemoving(playerObject)
+		self.PlayerMap[playerObject]:Destroy()
+		self.PlayerMap[playerObject] = nil
+	end
+end
+
+
+local localPlayerD = PlayerHandler.new().LocalPlayer
+
 local CameraUtils = {} do
 	--[[
 		CameraUtils - Math utility functions shared by multiple camera scripts
@@ -74,16 +239,6 @@ local Popper do
 	
 	local ray = Ray.new
 	
-	local function getTotalTransparency(part)
-		return 1 - (1 - part.Transparency) * (1 - part.LocalTransparencyModifier)
-	end
-	
-	local function eraseFromEnd(t, toSize)
-		for i = #t, toSize + 1, -1 do
-			t[i] = nil
-		end
-	end
-	
 	local nearPlaneZ, projX, projY do
 		local function updateProjection()
 			local fov = math.rad(camera.FieldOfView)
@@ -105,48 +260,7 @@ local Popper do
 		end)
 	end
 	
-	local blacklist = {} do
-		local charMap = {}
-		
-		local function refreshIgnoreList()
-			local n = 1
-			blacklist = {}
-			for _, character in next, charMap do
-				blacklist[n] = character
-				n += 1
-			end
-		end
-		
-		local function playerAdded(player)
-			local function characterAdded(character)
-				charMap[player] = character
-				refreshIgnoreList()
-			end
-			local function characterRemoving()
-				charMap[player] = nil
-				refreshIgnoreList()
-			end
-			
-			player.CharacterAdded:Connect(characterAdded)
-			player.CharacterRemoving:Connect(characterRemoving)
-			if player.Character then
-				characterAdded(player.Character)
-			end
-		end
-		
-		local function playerRemoving(player)
-			charMap[player] = nil
-			refreshIgnoreList()
-		end
-		
-		Players.PlayerAdded:Connect(playerAdded)
-		Players.PlayerRemoving:Connect(playerRemoving)
-		
-		for _, player in ipairs(Players:GetPlayers()) do
-			playerAdded(player)
-		end
-		refreshIgnoreList()
-	end
+	local blacklist = characterContainer.Characters
 	
 	--------------------------------------------------------------------------------------------
 	-- Popper uses the level geometry find an upper bound on subject-to-camera distance.
@@ -179,17 +293,6 @@ local Popper do
 		end
 	end)
 	
-	local function canOcclude(part)
-		-- Occluders must be:
-		-- 1. Opaque
-		-- 2. Interactable
-		-- 3. Not in the same assembly as the subject
-		
-		return getTotalTransparency(part) < 0.25
-			and part.CanCollide
-			and subjectRoot ~= (part:GetRootPart() or part)
-			and not part:IsA("TrussPart")
-	end
 	
 	-- Offsets for the volume visibility test
 	local SCAN_SAMPLE_OFFSETS = {
@@ -205,6 +308,12 @@ local Popper do
 	
 	--------------------------------------------------------------------------------
 	-- Piercing raycasts
+	
+	local function eraseFromEnd(t, toSize)
+		for i = #t, toSize + 1, -1 do
+			t[i] = nil
+		end
+	end
 	
 	local function getCollisionPoint(origin, dir)
 		local originalSize = #blacklist
@@ -227,6 +336,22 @@ local Popper do
 	end
 	
 	--------------------------------------------------------------------------------
+	
+	local function getTotalTransparency(part)
+		return 1 - (1 - part.Transparency) * (1 - part.LocalTransparencyModifier)
+	end
+	
+	local function canOcclude(part)
+		-- Occluders must be:
+		-- 1. Opaque
+		-- 2. Interactable
+		-- 3. Not in the same assembly as the subject
+		
+		return getTotalTransparency(part) < 0.25
+			and part.CanCollide
+			and subjectRoot ~= (part:GetRootPart() or part)
+			and not part:IsA("TrussPart")
+	end
 	
 	local function queryPoint(origin, unitDir, dist, lastPos)
 		debug.profilebegin("queryPoint")
@@ -383,11 +508,11 @@ local Popper do
 	
 	function Popper(focus, targetDist, focusExtrapolation)
 		debug.profilebegin("popper")
-		
 		subjectRoot = subjectPart and subjectPart:GetRootPart() or subjectPart
 		
 		local dist = targetDist
 		local soft, hard = queryViewport(focus, targetDist)
+		
 		if hard < dist then
 			dist = hard
 		end
@@ -616,7 +741,7 @@ local CameraInput = {} do
 	end
 	
 	local function isInDynamicThumbstickArea(pos: Vector3): boolean
-		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		local playerGui = localPlayerD.PlayerGui
 		local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
 		local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
 		local thumbstickFrame = touchFrame and touchFrame:FindFirstChild("DynamicThumbstickFrame")
@@ -661,7 +786,6 @@ local CameraInput = {} do
 			panInputCount = 0
 		end
 		
-		local touchPitchSensitivity = 1
 		local gamepadState = {
 			Thumbstick2 = Vector2.new(),
 		}
@@ -684,10 +808,6 @@ local CameraInput = {} do
 		
 		local gamepadZoomPressBindable = Instance.new("BindableEvent")
 		CameraInput.gamepadZoomPress = gamepadZoomPressBindable.Event
-		
-		function CameraInput.getRotationActivated(): boolean
-			return panInputCount > 0 or gamepadState.Thumbstick2.Magnitude > 0
-		end
 		
 		function CameraInput.getRotation(disableKeyboardRotation: boolean?): Vector2
 			local inversionVector = Vector2.new(1, UserGameSettings:GetCameraYInvertValue())
@@ -953,7 +1073,7 @@ local CameraInput = {} do
 					table.insert(connectionList, UserInputService.InputEnded:Connect(inputEnded))
 					table.insert(connectionList, UserInputService.PointerAction:Connect(pointerAction))
 					if FFlagUserResetTouchStateOnMenuOpen then
-						table.insert(connectionList, GuiService.MenuOpened:connect(resetTouchState))
+						table.insert(connectionList, GuiService.MenuOpened:Connect(resetTouchState))
 					end
 					
 				else -- disable
@@ -1005,7 +1125,6 @@ local BaseCamera = {} do
 	
 	local DEFAULT_DISTANCE = 12.5	-- Studs
 	local PORTRAIT_DEFAULT_DISTANCE = 25		-- Studs
-	local FIRST_PERSON_DISTANCE_THRESHOLD = 1.0 -- Below this value, snap into first person
 	
 	-- Note: DotProduct check in CoordinateFrame::lookAt() prevents using values within about
 	-- 8.11 degrees of the +/- Y axis, that's why these limits are currently 80 degrees
@@ -1028,13 +1147,10 @@ local BaseCamera = {} do
 		local self = setmetatable({}, BaseCamera)
 		
 		-- So that derived classes have access to this
-		self.FIRST_PERSON_DISTANCE_THRESHOLD = FIRST_PERSON_DISTANCE_THRESHOLD
+		self.FirstPersonDistanceThreshold = 1 -- Below this value, snap into first person
 		
 		self.lastCameraTransform = nil
 		self.lastUserPanCamera = tick()
-		
-		self.humanoidRootPart = nil
-		self.humanoidCache = {}
 		
 		-- Subject and position on last update call
 		self.lastSubject = nil
@@ -1063,10 +1179,9 @@ local BaseCamera = {} do
 		self.PlayerGui = nil
 		
 		self.viewportSizeChangedConn = nil
-		
 		self.gamepadZoomPressConnection = nil
 		
-		-- Mouse locked formerly known as shift lock mode
+		
 		self.mouseLockOffset = Vector3.zero
 		
 		-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
@@ -1120,7 +1235,7 @@ local BaseCamera = {} do
 	
 	function BaseCamera:OnCharacterAdded(char)
 		self.resetCameraAngle = self.resetCameraAngle or self:GetEnabled()
-		self.humanoidRootPart = nil
+		
 		if UserInputService.TouchEnabled then
 			self.PlayerGui = localPlayer:WaitForChild("PlayerGui")
 			for _, child in ipairs(char:GetChildren()) do
@@ -1141,18 +1256,6 @@ local BaseCamera = {} do
 		end
 	end
 	
-	function BaseCamera:GetHumanoidRootPart(): BasePart
-		if not self.humanoidRootPart then
-			if localPlayer.Character then
-				local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
-				if humanoid then
-					self.humanoidRootPart = humanoid.RootPart
-				end
-			end
-		end
-		return self.humanoidRootPart
-	end
-	
 	function BaseCamera:StepZoom()
 		local zoom: number = self.currentSubjectDistance
 		local zoomDelta: number = CameraInput.getZoomDelta()
@@ -1162,13 +1265,13 @@ local BaseCamera = {} do
 			
 			if zoomDelta > 0 then
 				newZoom = zoom + zoomDelta * (1 + zoom * ZOOM_SENSITIVITY_CURVATURE)
-				newZoom = math.max(newZoom, self.FIRST_PERSON_DISTANCE_THRESHOLD)
+				newZoom = math.max(newZoom, self.FirstPersonDistanceThreshold)
 			else
 				newZoom = (zoom + zoomDelta) / (1 - zoomDelta * ZOOM_SENSITIVITY_CURVATURE)
 				newZoom = math.max(newZoom, FIRST_PERSON_DISTANCE_MIN)
 			end
 			
-			if newZoom < self.FIRST_PERSON_DISTANCE_THRESHOLD then
+			if newZoom < self.FirstPersonDistanceThreshold then
 				newZoom = FIRST_PERSON_DISTANCE_MIN
 			end
 			
@@ -1303,17 +1406,9 @@ local BaseCamera = {} do
 		end
 	end
 	
-	function BaseCamera:OnDevTouchMovementModeChanged()
-		self:OnGameSettingsTouchMovementModeChanged()
-	end
-	
 	function BaseCamera:OnPlayerCameraPropertyChange()
 		-- This call forces re-evaluation of player.CameraMode and clamping to min/max distance which may have changed
 		self:SetCameraToSubjectDistance(self.currentSubjectDistance)
-	end
-	
-	function BaseCamera:InputTranslationToCameraAngleChange(translationVector, sensitivity)
-		return translationVector * sensitivity
 	end
 	
 	function BaseCamera:GamepadZoomPress()
@@ -1404,7 +1499,7 @@ local BaseCamera = {} do
 			localPlayer.CameraMaxZoomDistance
 		)
 		
-		if newSubjectDistance < FIRST_PERSON_DISTANCE_THRESHOLD then
+		if newSubjectDistance < self.FirstPersonDistanceThreshold then
 			self.currentSubjectDistance = 0.5
 			if not self.inFirstPerson then
 				self:EnterFirstPerson()
@@ -1455,17 +1550,6 @@ local BaseCamera = {} do
 		return self.currentSubjectDistance
 	end
 	
-	-- Actual measured distance to the camera Focus point, which may be needed in special circumstances, but should
-	-- never be used as the starting point for updating the nominal camera-to-subject distance (self.currentSubjectDistance)
-	-- since that is a desired target value set only by mouse wheel (or equivalent) input, PopperCam, and clamped to min max camera distance
-	function BaseCamera:GetMeasuredDistanceToFocus(): number?
-		local camera = workspace.CurrentCamera
-		if camera then
-			return (camera.CoordinateFrame.p - camera.Focus.p).magnitude
-		end
-		return nil
-	end
-	
 	function BaseCamera:GetCameraLookVector(): Vector3
 		return workspace.CurrentCamera and workspace.CurrentCamera.CFrame.LookVector or UNIT_Z
 	end
@@ -1496,32 +1580,9 @@ local BaseCamera = {} do
 	function BaseCamera:GetHumanoid(): Humanoid?
 		local character = localPlayer.Character
 		if character then
-			local resultHumanoid = self.humanoidCache[localPlayer]
-			if resultHumanoid and resultHumanoid.Parent == character then
-				return resultHumanoid
-			else
-				self.humanoidCache[localPlayer] = nil -- Bust Old Cache
-				local humanoid = character:FindFirstChildOfClass("Humanoid")
-				if humanoid then
-					self.humanoidCache[localPlayer] = humanoid
-				end
-				return humanoid
-			end
+			return character:FindFirstChildOfClass("Humanoid")
 		end
 		return nil
-	end
-	
-	function BaseCamera:GetHumanoidPartToFollow(humanoid: Humanoid, humanoidStateType: Enum.HumanoidStateType) -- BasePart
-		if humanoidStateType == Enum.HumanoidStateType.Dead then
-			local character = humanoid.Parent
-			if character then
-				return character:FindFirstChild("Head") or humanoid.Torso
-			else
-				return humanoid.Torso
-			end
-		else
-			return humanoid.Torso
-		end
 	end
 	
 	function BaseCamera:IsInFirstPerson()
@@ -1534,46 +1595,7 @@ local BaseCamera = {} do
 	
 end
 
-local BaseOcclusion: any = {} do
-	BaseOcclusion.__index = BaseOcclusion
-	
-	--[[
-		BaseOcclusion - Abstract base class for character occlusion control modules
-		2018 Camera Update - AllYourBlox
-	--]]
-	
-	function BaseOcclusion.new()
-		local self = setmetatable({}, BaseOcclusion)
-		return self
-	end
-	
-	-- Called when character is added
-	function BaseOcclusion:CharacterAdded(char: Model, player: Player)
-	end
-	
-	-- Called when character is about to be removed
-	function BaseOcclusion:CharacterRemoving(char: Model, player: Player)
-	end
-	
-	--[[ Derived classes are required to override and implement all of the following functions ]]--
-	function BaseOcclusion:GetOcclusionMode(): Enum.DevCameraOcclusionMode?
-		-- Must be overridden in derived classes to return an Enum.DevCameraOcclusionMode value
-		warn("BaseOcclusion GetOcclusionMode must be overridden by derived classes")
-		return nil
-	end
-	
-	function BaseOcclusion:Enable(enabled: boolean)
-		warn("BaseOcclusion Enable must be overridden by derived classes")
-	end
-	
-	function BaseOcclusion:Update(dt: number, desiredCameraCFrame: CFrame, desiredCameraFocus: CFrame)
-		warn("BaseOcclusion Update must be overridden by derived classes")
-		return desiredCameraCFrame, desiredCameraFocus
-	end
-	
-end
-
-local Poppercam = setmetatable({}, BaseOcclusion) do
+local Poppercam = {} do
 	Poppercam.__index = Poppercam
 	
 	--[[
@@ -1643,13 +1665,9 @@ local Poppercam = setmetatable({}, BaseOcclusion) do
 	end
 	
 	function Poppercam.new()
-		local self = setmetatable(BaseOcclusion.new(), Poppercam)
+		local self = setmetatable({}, Poppercam)
 		self.focusExtrapolator = TransformExtrapolator.new()
 		return self
-	end
-	
-	function Poppercam:GetOcclusionMode()
-		return Enum.DevCameraOcclusionMode.Zoom
 	end
 	
 	function Poppercam:Enable(enable)
@@ -1669,14 +1687,6 @@ local Poppercam = setmetatable({}, BaseOcclusion) do
 		local zoom = ZoomController.Update(renderDt, rotatedFocus, extrapolation)
 		
 		return rotatedFocus * CFrame.new(0, 0, zoom), desiredCameraFocus
-	end
-	
-	-- Called when character is added
-	function Poppercam:CharacterAdded(character, player)
-	end
-	
-	-- Called when character is about to be removed
-	function Poppercam:CharacterRemoving(character, player)
 	end
 	
 end
@@ -1763,7 +1773,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		
 		local overrideCameraLookVector = nil
 		if self.resetCameraAngle then
-			local rootPart: BasePart = self:GetHumanoidRootPart()
+			local rootPart: BasePart = localPlayerD:GetRootPart()
 			if rootPart then
 				overrideCameraLookVector = (rootPart.CFrame * INITIAL_CAMERA_ANGLE).lookVector
 			else
@@ -2176,16 +2186,6 @@ local CameraModule = {} do
 		self.OcclusionModule:Enable(true)
 		self.TransparencyController:Enable(true)
 		
-		-- Adds CharacterAdded and CharacterRemoving event handlers for all current players
-		for _, player in next, Players:GetPlayers() do
-			self:OnPlayerAdded(player)
-		end
-		
-		-- Adds CharacterAdded and CharacterRemoving event handlers for all players who join in the future
-		Players.PlayerAdded:Connect(function(player)
-			self:OnPlayerAdded(player)
-		end)
-		
 		if not UserInputService.TouchEnabled then
 			self.MouseLockController = MouseLockController.new(self)
 		end
@@ -2269,7 +2269,7 @@ local CameraModule = {} do
 		newCameraCFrame, newCameraFocus = self.OcclusionModule:Update(dt, newCameraCFrame, newCameraFocus)
 		
 		-- Here is where the new CFrame and Focus are set for this render frame
-		local currentCamera = workspace.CurrentCamera :: Camera
+		local currentCamera = workspace.CurrentCamera
 		currentCamera.CFrame = newCameraCFrame
 		currentCamera.Focus = newCameraFocus
 		
@@ -2281,31 +2281,14 @@ local CameraModule = {} do
 		end
 	end
 	
-	function CameraModule:OnCharacterAdded(char, player)
-		self.OcclusionModule:CharacterAdded(char, player)
-	end
-	
-	function CameraModule:OnCharacterRemoving(char, player)
-		self.OcclusionModule:CharacterRemoving(char, player)
-	end
-	
-	function CameraModule:OnPlayerAdded(player)
-		player.CharacterAdded:Connect(function(char)
-			self:OnCharacterAdded(char, player)
-		end)
-		player.CharacterRemoving:Connect(function(char)
-			self:OnCharacterRemoving(char, player)
-		end)
-	end
-	
 	function CameraModule:OnMouseLockToggled()
-		if not self.MouseLockController then return end
-		local mouseLocked = self.MouseLockController.IsMouseLocked
-		local mouseLockOffset = self.MouseLockController.MouseLockOffset
-		
 		if self.IsScriptableModeActive then return end
 		
-		self.CameraController:SetIsMouseLocked(mouseLocked)
+		local controller = self.MouseLockController
+		local isMouseLocked = controller.IsMouseLocked
+		local mouseLockOffset = controller.MouseLockOffset
+		
+		self.CameraController:SetIsMouseLocked(isMouseLocked)
 		self.CameraController:SetMouseLockOffset(mouseLockOffset)
 	end
 	
@@ -2332,10 +2315,6 @@ local BaseCharacterController = {} do
 		return self
 	end
 	
-	function BaseCharacterController:OnRenderStepped(dt: number)
-		-- By default, nothing to do
-	end
-	
 	function BaseCharacterController:GetMoveVector(): Vector3
 		return self.moveVector
 	end
@@ -2346,13 +2325,6 @@ local BaseCharacterController = {} do
 	
 	function BaseCharacterController:GetIsJumping(): boolean
 		return self.isJumping
-	end
-	
-	-- Override in derived classes to set self.enabled and return boolean indicating
-	-- whether Enable/Disable was successful. Return true if controller is already in the requested state.
-	function BaseCharacterController:Enable(enable: boolean): boolean
-		error("BaseCharacterController:Enable must be overridden in derived classes and should not be called.")
-		return false
 	end
 	
 end
@@ -2542,7 +2514,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function DynamicThumbstick:DoFadeInBackground()
-		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		local playerGui = localPlayerD.PlayerGui
 		local hasFadedBackgroundInOrientation = false
 		
 		-- only fade in/out the background once per orientation
@@ -2865,13 +2837,13 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			end
 		end)
 		
-		self.onTouchEndedConn = UserInputService.TouchEnded:connect(function(inputObject: InputObject)
+		self.onTouchEndedConn = UserInputService.TouchEnded:Connect(function(inputObject: InputObject)
 			if inputObject == self.moveTouchObject then
 				self:OnInputEnded()
 			end
 		end)
 		
-		GuiService.MenuOpened:connect(function()
+		GuiService.MenuOpened:Connect(function()
 			if self.moveTouchObject then
 				self:OnInputEnded()
 			end
@@ -3340,7 +3312,7 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 			if not self.jumpButton then
 				self:Create()
 			end
-			local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+			local humanoid = localPlayerD.Humanoid
 			if humanoid and self.externallyEnabled then
 				if self.externallyEnabled then
 					if humanoid.JumpPower > 0 then
@@ -3364,15 +3336,11 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function TouchJump:HumanoidChanged(prop)
-		local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+		local humanoid = localPlayerD.Humanoid
 		if humanoid then
 			if prop == "JumpPower" then
 				self.jumpPower =  humanoid.JumpPower
 				self:UpdateEnabled()
-			elseif prop == "Parent" then
-				if not humanoid.Parent then
-					self.humanoidChangeConn:Disconnect()
-				end
 			end
 		end
 	end
@@ -3385,11 +3353,6 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function TouchJump:CharacterAdded(char)
-		if self.humanoidChangeConn then
-			self.humanoidChangeConn:Disconnect()
-			self.humanoidChangeConn = nil
-		end
-		
 		self.humanoid = char:FindFirstChildOfClass("Humanoid")
 		while not self.humanoid do
 			char.ChildAdded:wait()
@@ -3397,7 +3360,7 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 		end
 		
 		self.humanoidJumpPowerConn = self.humanoid:GetPropertyChangedSignal("JumpPower"):Connect(function()
-			self.jumpPower =  self.humanoid.JumpPower
+			self.jumpPower = self.humanoid.JumpPower
 			self:UpdateEnabled()
 		end)
 		
@@ -3464,7 +3427,7 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 			or UDim2.new(1, -(jumpButtonSize * 1.5 - 10), 1, -jumpButtonSize * 1.75)
 		
 		local touchObject: InputObject? = nil
-		self.jumpButton.InputBegan:connect(function(inputObject)
+		self.jumpButton.InputBegan:Connect(function(inputObject)
 			--A touch that starts elsewhere on the screen will be sent to a frame's InputBegan event
 			--if it moves over the frame. So we check that this is actually a new touch (inputObject.UserInputState ~= Enum.UserInputState.Begin)
 			if touchObject or inputObject.UserInputType ~= Enum.UserInputType.Touch
@@ -3483,13 +3446,13 @@ local TouchJump = setmetatable({}, BaseCharacterController) do
 			self.jumpButton.ImageRectOffset = Vector2.new(1, 146)
 		end
 		
-		self.jumpButton.InputEnded:connect(function(inputObject: InputObject)
+		self.jumpButton.InputEnded:Connect(function(inputObject: InputObject)
 			if inputObject == touchObject then
 				OnInputEnded()
 			end
 		end)
 		
-		GuiService.MenuOpened:connect(function()
+		GuiService.MenuOpened:Connect(function()
 			if touchObject then
 				OnInputEnded()
 			end
@@ -3798,7 +3761,7 @@ local ControlModule = {} do
 		self.activeController = nil
 		self.touchJumpController = nil
 		self.moveFunction = localPlayer.Move
-		self.humanoid = nil
+		
 		self.lastInputType = Enum.UserInputType.None
 		self.controlsEnabled = true
 		
@@ -3818,12 +3781,6 @@ local ControlModule = {} do
 			end)
 		end
 		
-		localPlayer.CharacterAdded:Connect(function(char) self:OnCharacterAdded(char) end)
-		localPlayer.CharacterRemoving:Connect(function(char) self:OnCharacterRemoving(char) end)
-		if localPlayer.Character then
-			self:OnCharacterAdded(localPlayer.Character)
-		end
-		
 		UserInputService.LastInputTypeChanged:Connect(function(newLastInputType)
 			self:OnLastInputTypeChanged(newLastInputType)
 		end)
@@ -3832,48 +3789,34 @@ local ControlModule = {} do
 		UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
 			self:OnTouchMovementModeChange()
 		end)
-		localPlayer:GetPropertyChangedSignal("DevTouchMovementMode"):Connect(function()
-			self:OnTouchMovementModeChange()
-		end)
 		
 		UserGameSettings:GetPropertyChangedSignal("ComputerMovementMode"):Connect(function()
-			self:OnComputerMovementModeChange()
-		end)
-		localPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
 			self:OnComputerMovementModeChange()
 		end)
 		
 		--[[ Touch Device UI ]]--
 		self.playerGui = nil
 		self.touchGui = nil
-		self.playerGuiAddedConn = nil
 		
 		GuiService:GetPropertyChangedSignal("TouchControlsEnabled"):Connect(function()
 			self:UpdateTouchGuiVisibility()
 			self:UpdateActiveControlModuleEnabled()
 		end)
 		
-		if UserInputService.TouchEnabled then
-			self.playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-			if self.playerGui then
-				self:CreateTouchGuiContainer()
-				self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
-			else
-				self.playerGuiAddedConn = localPlayer.ChildAdded:Connect(function(child)
-					if child:IsA("PlayerGui") then
-						self.playerGui = child
-						self:CreateTouchGuiContainer()
-						self.playerGuiAddedConn:Disconnect()
-						self.playerGuiAddedConn = nil
-						self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
-					end
-				end)
-			end
-		else
-			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
+		if localPlayerD.PlayerGui then
+			self:OnPlayerGuiAdded()
 		end
 		
 		return self
+	end
+	
+	function ControlModule:OnPlayerGuiAdded()
+		if UserInputService.TouchEnabled then
+			self:CreateTouchGuiContainer()
+			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
+		else
+			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
+		end
 	end
 	
 	-- Convenience function so that calling code does not have to first get the activeController
@@ -4012,13 +3955,13 @@ local ControlModule = {} do
 		return touchModule, true
 	end
 	
-	local function calculateRawMoveVector(humanoid: Humanoid, cameraRelativeMoveVector: Vector3): Vector3
+	local function calculateRawMoveVector(cameraRelativeMoveVector: Vector3): Vector3
 		local camera = workspace.CurrentCamera
 		if not camera then
 			return cameraRelativeMoveVector
 		end
 		
-		if humanoid:GetState() == Enum.HumanoidStateType.Swimming then
+		if localPlayerD.Humanoid:GetState() == Enum.HumanoidStateType.Swimming then
 			return camera.CFrame:VectorToWorldSpace(cameraRelativeMoveVector)
 		end
 		
@@ -4045,44 +3988,26 @@ local ControlModule = {} do
 	end
 	
 	function ControlModule:OnRenderStepped(dt)
-		if self.activeController and self.activeController.enabled and self.humanoid then
-			-- Give the controller a chance to adjust its state
-			self.activeController:OnRenderStepped(dt)
+		if self.activeController and self.activeController.enabled and localPlayerD.Humanoid then
 			
 			-- Now retrieve info from the controller
 			local moveVector = self.activeController:GetMoveVector()
 			local cameraRelative = self.activeController:IsMoveVectorCameraRelative()
 			
 			if cameraRelative then
-				moveVector = calculateRawMoveVector(self.humanoid, moveVector)
+				moveVector = calculateRawMoveVector(moveVector)
 			end
 			self.moveFunction(localPlayer, moveVector, false)
 			
 			-- And make them jump if needed
-			self.humanoid.Jump = self.activeController:GetIsJumping()
+			localPlayerD.Humanoid.Jump = self.activeController:GetIsJumping()
 				or (self.touchJumpController and self.touchJumpController:GetIsJumping())
 		end
 	end
 	
-	function ControlModule:OnCharacterAdded(char)
-		self.humanoid = char:FindFirstChildOfClass("Humanoid")
-		while not self.humanoid do
-			char.ChildAdded:wait()
-			self.humanoid = char:FindFirstChildOfClass("Humanoid")
-		end
-		
-		self:UpdateTouchGuiVisibility()
-	end
-	
-	function ControlModule:OnCharacterRemoving(char)
-		self.humanoid = nil
-		
-		self:UpdateTouchGuiVisibility()
-	end
-	
 	function ControlModule:UpdateTouchGuiVisibility()
 		if self.touchGui then
-			local doShow = self.humanoid and GuiService.TouchControlsEnabled
+			local doShow = localPlayerD.Humanoid and GuiService.TouchControlsEnabled
 			self.touchGui.Enabled = not not doShow -- convert to bool
 		end
 	end
@@ -4195,7 +4120,7 @@ local ControlModule = {} do
 		self.touchControlFrame.BackgroundTransparency = 1
 		self.touchControlFrame.Parent = self.touchGui
 		
-		self.touchGui.Parent = self.playerGui
+		self.touchGui.Parent = assert(localPlayerD.PlayerGui)
 	end
 	
 end
@@ -4208,8 +4133,11 @@ local PlayerModule = {} do
 	function PlayerModule.new()
 		local self = setmetatable({},PlayerModule)
 		
-		self.Camera = CameraModule.new()
-		self.Control = ControlModule.new()
+		cameraModule = CameraModule.new()
+		controlModule = ControlModule.new()
+		
+		self.Camera = cameraModule
+		self.Control = controlModule
 		
 		RunService.RenderStepped:Connect(function(dt)
 			self.Camera:Update(dt)
