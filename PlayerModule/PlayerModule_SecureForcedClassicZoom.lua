@@ -181,6 +181,19 @@ local PlayerHandler = {} do
 	end
 end
 
+local CameraHandler = {} do
+	CameraHandler.__index = CameraHandler
+	
+	function CameraHandler.new()
+		local self = setmetatable({}, CameraHandler)
+		
+		self.CameraObject = workspace.CurrentCamera
+		
+		return self
+	end
+end
+
+local cameraHandler = CameraHandler.new()
 
 local localPlayerD = PlayerHandler.new().LocalPlayer
 
@@ -229,38 +242,10 @@ local CameraUtils = {} do
 end
 
 
-local Popper do
-	--------------------------------------------------------------------------------
-	-- Popper.lua
-	-- Prevents your camera from clipping through walls.
-	--------------------------------------------------------------------------------
+local Popper = {} do
+	Popper.__index = Popper
 	
 	local camera = workspace.CurrentCamera
-	
-	local ray = Ray.new
-	
-	local nearPlaneZ, projX, projY do
-		local function updateProjection()
-			local fov = math.rad(camera.FieldOfView)
-			local view = camera.ViewportSize
-			local ar = view.X / view.Y
-			
-			projY = 2 * math.tan(fov / 2)
-			projX = ar * projY
-		end
-		
-		camera:GetPropertyChangedSignal("FieldOfView"):Connect(updateProjection)
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateProjection)
-		
-		updateProjection()
-		
-		nearPlaneZ = camera.NearPlaneZ
-		camera:GetPropertyChangedSignal("NearPlaneZ"):Connect(function()
-			nearPlaneZ = camera.NearPlaneZ
-		end)
-	end
-	
-	local blacklist = characterContainer.Characters
 	
 	--------------------------------------------------------------------------------------------
 	-- Popper uses the level geometry find an upper bound on subject-to-camera distance.
@@ -279,41 +264,66 @@ local Popper do
 	-- lies between the current and target camera positions.
 	--------------------------------------------------------------------------------------------
 	
-	local subjectRoot
-	local subjectPart
-	
-	camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
-		local subject = camera.CameraSubject
-		if subject:IsA("Humanoid") then
-			subjectPart = subject.RootPart
-		elseif subject:IsA("BasePart") then
-			subjectPart = subject
-		else
-			subjectPart = nil
+	function Popper.new()
+		local self = setmetatable({}, Popper)
+		
+		self.nearPlaneZ = nil
+		self.projX = nil
+		self.projY = nil
+		
+		self.subjectRoot = nil
+		self.subjectPart = nil
+		
+		local function updateProjection()
+			local fov = math.rad(camera.FieldOfView)
+			local view = camera.ViewportSize
+			local ar = view.X / view.Y
+			
+			self.projY = 2 * math.tan(fov / 2)
+			self.projX = ar * self.projY
 		end
-	end)
+		
+		camera:GetPropertyChangedSignal("FieldOfView"):Connect(updateProjection)
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateProjection)
+		
+		updateProjection()
+		
+		self.nearPlaneZ = camera.NearPlaneZ
+		camera:GetPropertyChangedSignal("NearPlaneZ"):Connect(function()
+			self.nearPlaneZ = camera.NearPlaneZ
+		end)
+		
+		
+		camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
+			local subject = camera.CameraSubject
+			if subject:IsA("Humanoid") then
+				self.subjectPart = subject.RootPart
+			elseif subject:IsA("BasePart") then
+				self.subjectPart = subject
+			else
+				self.subjectPart = nil
+			end
+		end)
+		
+		return self
+	end
 	
-	
-	-- Offsets for the volume visibility test
-	local SCAN_SAMPLE_OFFSETS = {
-		Vector2.new( 0.4, 0.0),
-		Vector2.new(-0.4, 0.0),
-		Vector2.new( 0.0,-0.4),
-		Vector2.new( 0.0, 0.4),
-		Vector2.new( 0.0, 0.2),
-	}
-	
-	-- Maximum number of rays that can be cast 
-	local QUERY_POINT_CAST_LIMIT = 64
-	
-	--------------------------------------------------------------------------------
-	-- Piercing raycasts
 	
 	local function eraseFromEnd(t, toSize)
 		for i = #t, toSize + 1, -1 do
 			t[i] = nil
 		end
 	end
+	
+	local ray = Ray.new
+	local blacklist = characterContainer.Characters
+	
+	-- Maximum number of rays that can be cast
+	local QUERY_POINT_CAST_LIMIT = 64
+	
+	--------------------------------------------------------------------------------
+	-- Piercing raycasts
+	
 	
 	local function getCollisionPoint(origin, dir)
 		local originalSize = #blacklist
@@ -353,12 +363,13 @@ local Popper do
 			and not part:IsA("TrussPart")
 	end
 	
-	local function queryPoint(origin, unitDir, dist, lastPos)
+	function Popper:queryPoint(origin, unitDir, dist, lastPos)
 		debug.profilebegin("queryPoint")
 		
 		local originalSize = #blacklist
 		
-		dist = dist + nearPlaneZ
+		local nearPlaneZ = self.nearPlaneZ
+		dist += nearPlaneZ
 		local target = origin + unitDir*dist
 		
 		local softLimit = math.huge
@@ -413,7 +424,7 @@ local Popper do
 		return softLimit - nearPlaneZ, hardLimit - nearPlaneZ
 	end
 	
-	local function queryViewport(focus, dist)
+	function Popper:queryViewport(focus, dist)
 		debug.profilebegin("queryViewport")
 		
 		local fP =  focus.p
@@ -425,6 +436,10 @@ local Popper do
 		
 		local hardBoxLimit = math.huge
 		local softBoxLimit = math.huge
+		
+		local projX = self.projX
+		local projY = self.projY
+		local nearPlaneZ = self.nearPlaneZ
 		
 		-- Center the viewport on the PoI, sweep points on the edge towards the target, and take the minimum limits
 		for viewX = 0, 1 do
@@ -439,7 +454,7 @@ local Popper do
 					viewport.y * viewY
 				).Origin
 				
-				local softPointLimit, hardPointLimit = queryPoint(origin, fZ, dist, lastPos)
+				local softPointLimit, hardPointLimit = self:queryPoint(origin, fZ, dist, lastPos)
 				
 				if hardPointLimit < hardBoxLimit then
 					hardBoxLimit = hardPointLimit
@@ -456,7 +471,17 @@ local Popper do
 		return softBoxLimit, hardBoxLimit
 	end
 	
-	local function testPromotion(focus, dist, focusExtrapolation)
+	
+	-- Offsets for the volume visibility test
+	local SCAN_SAMPLE_OFFSETS = {
+		Vector2.new( 0.4, 0.0),
+		Vector2.new(-0.4, 0.0),
+		Vector2.new( 0.0,-0.4),
+		Vector2.new( 0.0, 0.4),
+		Vector2.new( 0.0, 0.2),
+	}
+	
+	function Popper:testPromotion(focus, dist, focusExtrapolation)
 		debug.profilebegin("testPromotion")
 		
 		local fP = focus.p
@@ -479,7 +504,7 @@ local Popper do
 			for dt = 0, limit, SAMPLE_DT do
 				local cfDt = focusExtrapolation.extrapolate(dt) -- Extrapolated CFrame at time dt
 				
-				if queryPoint(cfDt.p, -cfDt.lookVector, dist) >= dist then
+				if self:queryPoint(cfDt.p, -cfDt.lookVector, dist) >= dist then
 					return false
 				end
 			end
@@ -491,10 +516,10 @@ local Popper do
 			-- Test screen-space offsets from the focus for the presence of soft limits
 			debug.profilebegin("testOffsets")
 			
-			for _, offset in ipairs(SCAN_SAMPLE_OFFSETS) do
+			for _, offset in next, SCAN_SAMPLE_OFFSETS do
 				local scaledOffset = offset
 				local pos = getCollisionPoint(fP, fX * scaledOffset.x + fY * scaledOffset.y)
-				if queryPoint(pos, (fP + fZ * dist - pos).Unit, dist) == math.huge then
+				if self:queryPoint(pos, (fP + fZ * dist - pos).Unit, dist) == math.huge then
 					return false
 				end
 			end
@@ -506,18 +531,19 @@ local Popper do
 		return true
 	end
 	
-	function Popper(focus, targetDist, focusExtrapolation)
+	function Popper:run(focus, targetDist, focusExtrapolation)
 		debug.profilebegin("popper")
-		subjectRoot = subjectPart and subjectPart:GetRootPart() or subjectPart
+		local subjectPart = self.subjectPart
+		self.subjectRoot = subjectPart and subjectPart:GetRootPart() or subjectPart
 		
 		local dist = targetDist
-		local soft, hard = queryViewport(focus, targetDist)
+		local soft, hard = self:queryViewport(focus, targetDist)
 		
 		if hard < dist then
 			dist = hard
 		end
 		
-		if soft < dist and testPromotion(focus, targetDist, focusExtrapolation) then
+		if soft < dist and self:testPromotion(focus, targetDist, focusExtrapolation) then
 			dist = soft
 		end
 		
@@ -528,6 +554,8 @@ local Popper do
 	end
 	
 end
+
+popper = Popper.new()
 
 local ZoomController = {} do
 	-- Controls the distance between the focus and the camera.
@@ -626,7 +654,7 @@ local ZoomController = {} do
 			)
 			
 			-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
-			poppedZoom = Popper(
+			poppedZoom = popper:run(
 				focus * CFrame.new(0, 0, MIN_FOCUS_DIST),
 				maxPossibleZoom - MIN_FOCUS_DIST,
 				extrapolation
@@ -672,8 +700,6 @@ local CameraInput = {} do
 	local ZOOM_SPEED_TOUCH = 0.04 -- (scaled studs/DIP %)
 	
 	local MIN_TOUCH_SENSITIVITY_FRACTION = 0.25 -- 25% sensitivity at 90°
-	
-	local FFlagUserResetTouchStateOnMenuOpen = getFastFlag("UserResetTouchStateOnMenuOpen")
 	
 	-- right mouse button up & down events
 	local rmbDown, rmbUp do
@@ -989,9 +1015,7 @@ local CameraInput = {} do
 					touches = {}
 					dynamicThumbstickInput = nil
 					lastPinchDiameter = nil
-					if FFlagUserResetTouchStateOnMenuOpen then
-						resetPanInputCount()
-					end
+					resetPanInputCount()
 				end
 			end
 			
@@ -1072,9 +1096,7 @@ local CameraInput = {} do
 					table.insert(connectionList, UserInputService.InputChanged:Connect(inputChanged))
 					table.insert(connectionList, UserInputService.InputEnded:Connect(inputEnded))
 					table.insert(connectionList, UserInputService.PointerAction:Connect(pointerAction))
-					if FFlagUserResetTouchStateOnMenuOpen then
-						table.insert(connectionList, GuiService.MenuOpened:Connect(resetTouchState))
-					end
+					table.insert(connectionList, GuiService.MenuOpened:Connect(resetTouchState))
 					
 				else -- disable
 					ContextActionService:UnbindAction("RbxCameraThumbstick")
