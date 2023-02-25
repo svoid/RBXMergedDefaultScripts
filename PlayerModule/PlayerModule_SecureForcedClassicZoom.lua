@@ -25,30 +25,6 @@ local CameraUtils = {} do
 		2018 Camera Update - AllYourBlox
 	--]]
 	
-	CameraUtils.Spring = Spring
-	
-	local savedMouseIcon: string = ""
-	local lastMouseIconOverride: string? = nil
-	function CameraUtils.setMouseIconOverride(icon: string)
-		local mouse = localPlayer:GetMouse()
-		-- Only save the icon if it was written by another script.
-		if mouse.Icon ~= lastMouseIconOverride then
-			savedMouseIcon = mouse.Icon
-		end
-		
-		mouse.Icon = icon
-		lastMouseIconOverride = icon
-	end
-	
-	function CameraUtils.restoreMouseIcon()
-		local mouse = localPlayer:GetMouse()
-		-- Only restore if it wasn't overwritten by another script.
-		if mouse.Icon == lastMouseIconOverride then
-			mouse.Icon = savedMouseIcon
-		end
-		lastMouseIconOverride = nil
-	end
-	
 	local savedMouseBehavior: Enum.MouseBehavior = Enum.MouseBehavior.Default
 	local lastMouseBehaviorOverride: Enum.MouseBehavior? = nil
 	function CameraUtils.setMouseBehaviorOverride(value: Enum.MouseBehavior)
@@ -1867,169 +1843,81 @@ end
 local MouseLockController = {} do
 	MouseLockController.__index = MouseLockController
 	
-	--[[
-		MouseLockController - Replacement for ShiftLockController, manages use of mouse-locked mode
-		2018 Camera Update - AllYourBlox
-	--]]
-	
-	local DEFAULT_MOUSE_LOCK_CURSOR = "rbxasset://textures/MouseLockedCursor.png"
-	
-	local CONTEXT_ACTION_NAME = "MouseLockSwitchAction"
-	local MOUSELOCK_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
-	
-	local Settings = userSettings	-- ignore warning
-	local GameSettings = Settings.GameSettings
-	
-	function MouseLockController.new()
+	function MouseLockController.new(cameraModule)
 		local self = setmetatable({}, MouseLockController)
 		
-		self.isMouseLocked = false
-		self.savedMouseCursor = nil
-		self.boundKeys = {Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift} -- defaults
+		self.IsEnabled = true
+		self.IsMouseLocked = false
 		
-		self.mouseLockToggledEvent = Instance.new("BindableEvent")
+		self.MouseLockOffset = Vector3.new(1.75, 0, 0)
+		self.BoundKeys = {
+			Enum.KeyCode.LeftShift,
+			Enum.KeyCode.RightShift
+		}
 		
-		-- Watch for changes to user's ControlMode and ComputerMovementMode settings and update the feature availability accordingly
-		GameSettings.Changed:Connect(function(property)
-			if property == "ControlMode" or property == "ComputerMovementMode" then
-				self:UpdateMouseLockAvailability()
+		self.CameraModule = cameraModule
+		
+		self.MouseObject = localPlayer:GetMouse()
+		self.LockCursorImage = "rbxasset://textures/MouseLockedCursor.png"
+		self.LastMouseIcon = nil
+		
+		UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+			if gameProcessedEvent then return end
+			if not self.IsEnabled then return end
+			
+			local key = input.KeyCode
+			for _, switchKey in next, self.BoundKeys do
+				if key == switchKey then
+					self:_OnMouseLockToggled()
+				end
 			end
 		end)
-		
-		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		localPlayer:GetPropertyChangedSignal("DevEnableMouseLock"):Connect(function()
-			self:UpdateMouseLockAvailability()
-		end)
-		
-		-- Watch for changes to DevEnableMouseLock and update the feature availability accordingly
-		localPlayer:GetPropertyChangedSignal("DevComputerMovementMode"):Connect(function()
-			self:UpdateMouseLockAvailability()
-		end)
-		
-		self:UpdateMouseLockAvailability()
 		
 		return self
 	end
 	
-	function MouseLockController:GetIsMouseLocked()
-		return self.isMouseLocked
+	function MouseLockController:_SetMouseIconOverride()
+		local mouse = self.MouseObject
+		self.LastMouseIcon = mouse.Icon
+		mouse.Icon = self.LockCursorImage
 	end
 	
-	function MouseLockController:GetBindableToggleEvent()
-		return self.mouseLockToggledEvent.Event
+	function MouseLockController:_RestoreMouseIcon()
+		self.MouseObject.Icon = self.LastMouseIcon
 	end
 	
-	function MouseLockController:GetMouseLockOffset()
-		local offsetValueObj: Vector3Value = script:FindFirstChild("CameraOffset") :: Vector3Value
-		if offsetValueObj and offsetValueObj:IsA("Vector3Value") then
-			return offsetValueObj.Value
+	function MouseLockController:_OnMouseLockToggled()
+		self.IsMouseLocked = not self.IsMouseLocked
+		
+		if self.IsMouseLocked then
+			self:_SetMouseIconOverride()
 		else
-			-- If CameraOffset object was found but not correct type, destroy
-			if offsetValueObj then
-				offsetValueObj:Destroy()
-			end
-			offsetValueObj = Instance.new("Vector3Value")
-			assert(offsetValueObj, "")
-			offsetValueObj.Name = "CameraOffset"
-			offsetValueObj.Value = Vector3.new(1.75, 0, 0) -- Legacy Default Value
-			offsetValueObj.Parent = script
+			self:_RestoreMouseIcon()
 		end
 		
-		if offsetValueObj and offsetValueObj.Value then
-			return offsetValueObj.Value
-		end
-		
-		return Vector3.new(1.75,0,0)
-	end
-	
-	function MouseLockController:UpdateMouseLockAvailability()
-		local devAllowsMouseLock = localPlayer.DevEnableMouseLock
-		local devMovementModeIsScriptable = localPlayer.DevComputerMovementMode == Enum.DevComputerMovementMode.Scriptable
-		local userHasMouseLockModeEnabled = GameSettings.ControlMode == Enum.ControlMode.MouseLockSwitch
-		local MouseLockAvailable = devAllowsMouseLock
-			and userHasMouseLockModeEnabled
-			and not devMovementModeIsScriptable
-		
-		if MouseLockAvailable~=self.enabled then
-			self:EnableMouseLock(MouseLockAvailable)
-		end
-	end
-	
-	--[[ Local Functions ]]--
-	function MouseLockController:OnMouseLockToggled()
-		self.isMouseLocked = not self.isMouseLocked
-		
-		if self.isMouseLocked then
-			local cursorImageValueObj: StringValue? = script:FindFirstChild("CursorImage") :: StringValue?
-			if cursorImageValueObj and cursorImageValueObj:IsA("StringValue") and cursorImageValueObj.Value then
-				CameraUtils.setMouseIconOverride(cursorImageValueObj.Value)
-			else
-				if cursorImageValueObj then
-					cursorImageValueObj:Destroy()
-				end
-				cursorImageValueObj = Instance.new("StringValue")
-				assert(cursorImageValueObj, "")
-				cursorImageValueObj.Name = "CursorImage"
-				cursorImageValueObj.Value = DEFAULT_MOUSE_LOCK_CURSOR
-				cursorImageValueObj.Parent = script
-				CameraUtils.setMouseIconOverride(DEFAULT_MOUSE_LOCK_CURSOR)
-			end
-		else
-			CameraUtils.restoreMouseIcon()
-		end
-		
-		self.mouseLockToggledEvent:Fire()
-	end
-	
-	function MouseLockController:DoMouseLockSwitch(name, state, input)
-		if state == Enum.UserInputState.Begin then
-			self:OnMouseLockToggled()
-			return Enum.ContextActionResult.Sink
-		end
-		return Enum.ContextActionResult.Pass
-	end
-	
-	function MouseLockController:BindContextActions()
-		local functionToBind = function(name, state, input)
-			return self:DoMouseLockSwitch(name, state, input)
-		end
-		
-		ContextActionService:BindActionAtPriority(CONTEXT_ACTION_NAME,
-			functionToBind, false, MOUSELOCK_ACTION_PRIORITY, unpack(self.boundKeys))
-	end
-	
-	function MouseLockController:UnbindContextActions()
-		ContextActionService:UnbindAction(CONTEXT_ACTION_NAME)
+		self.CameraModule:OnMouseLockToggled()
 	end
 	
 	function MouseLockController:IsMouseLocked(): boolean
-		return self.enabled and self.isMouseLocked
+		return self.IsEnabled and self.IsMouseLocked
 	end
 	
 	function MouseLockController:EnableMouseLock(enable: boolean)
-		if enable ~= self.enabled then
+		if enable == self.IsEnabled then return end
 			
-			self.enabled = enable
+		self.IsEnabled = enable
+		
+		if not self.IsEnabled then
+			self:_RestoreMouseIcon()
 			
-			if self.enabled then
-				-- Enabling the mode
-				self:BindContextActions()
-			else
-				-- Disabling
-				-- Restore mouse cursor
-				CameraUtils.restoreMouseIcon()
-				
-				self:UnbindContextActions()
-				
-				-- If the mode is disabled while being used, fire the event to toggle it off
-				if self.isMouseLocked then
-					self.mouseLockToggledEvent:Fire()
-				end
-				
-				self.isMouseLocked = false
+			-- If the mode is disabled while being used, fire the event to toggle it off
+			if self.IsMouseLocked then
+				self.CameraModule:_OnMouseLockToggled()
 			end
 			
+			self.IsMouseLocked = false
 		end
+		
 	end
 	
 end
@@ -2299,17 +2187,8 @@ local CameraModule = {} do
 		end)
 		
 		if not UserInputService.TouchEnabled then
-			self.MouseLockController = MouseLockController.new()
-			local toggleEvent = self.MouseLockController:GetBindableToggleEvent()
-			if toggleEvent then
-				toggleEvent:Connect(function()
-					self:OnMouseLockToggled()
-				end)
-			end
+			self.MouseLockController = MouseLockController.new(self)
 		end
-		
-		RunService:BindToRenderStep("cameraRenderUpdate", Enum.RenderPriority.Camera.Value,
-			function(dt) self:Update(dt) end)
 		
 		local function zoomDistanceModeUpdate()
 			if not self.IsScriptableModeActive then
@@ -2421,8 +2300,8 @@ local CameraModule = {} do
 	
 	function CameraModule:OnMouseLockToggled()
 		if not self.MouseLockController then return end
-		local mouseLocked = self.MouseLockController:GetIsMouseLocked()
-		local mouseLockOffset = self.MouseLockController:GetMouseLockOffset()
+		local mouseLocked = self.MouseLockController.IsMouseLocked
+		local mouseLockOffset = self.MouseLockController.MouseLockOffset
 		
 		if self.IsScriptableModeActive then return end
 		
@@ -3945,10 +3824,6 @@ local ControlModule = {} do
 			self:OnCharacterAdded(localPlayer.Character)
 		end
 		
-		RunService:BindToRenderStep("ControlScriptRenderstep", Enum.RenderPriority.Input.Value, function(dt)
-			self:OnRenderStepped(dt)
-		end)
-		
 		UserInputService.LastInputTypeChanged:Connect(function(newLastInputType)
 			self:OnLastInputTypeChanged(newLastInputType)
 		end)
@@ -4332,17 +4207,16 @@ local PlayerModule = {} do
 	
 	function PlayerModule.new()
 		local self = setmetatable({},PlayerModule)
-		self.cameras = CameraModule.new()
-		self.controls = ControlModule.new()
+		
+		self.Camera = CameraModule.new()
+		self.Control = ControlModule.new()
+		
+		RunService.RenderStepped:Connect(function(dt)
+			self.Camera:Update(dt)
+			self.Control:OnRenderStepped(dt)
+		end)
+		
 		return self
-	end
-	
-	function PlayerModule:GetCameras()
-		return self.cameras
-	end
-	
-	function PlayerModule:GetControls()
-		return self.controls
 	end
 	
 end
