@@ -181,19 +181,65 @@ local PlayerHandler = {} do
 	end
 end
 
-local CameraHandler = {} do
-	CameraHandler.__index = CameraHandler
-	
-	function CameraHandler.new()
-		local self = setmetatable({}, CameraHandler)
-		
-		self.CameraObject = workspace.CurrentCamera
-		
-		return self
-	end
-end
+local popper
 
-local cameraHandler = CameraHandler.new()
+local cameraHandler do
+	
+	CameraHandler = {} do
+		CameraHandler.__index = CameraHandler
+		
+		function CameraHandler.new()
+			local self = setmetatable({}, CameraHandler)
+			
+			local camera = workspace.CurrentCamera
+			
+			self.CameraObject = camera
+			
+			self.FieldOfView = camera.FieldOfView
+			self.ViewportSize = camera.ViewportSize
+			
+			self.NearPlaneZ = camera.NearPlaneZ
+			self.CameraSubject = camera.CameraSubject
+			
+			camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
+				self.FieldOfView = camera.FieldOfView
+				self:UpdatePopperProjection()
+			end)
+			
+			camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+				self.ViewportSize = camera.ViewportSize
+				self:UpdatePopperProjection()
+			end)
+			
+			camera:GetPropertyChangedSignal("NearPlaneZ"):Connect(function()
+				self.NearPlaneZ = camera.NearPlaneZ
+				self:UpdatePopperNearPlaneZ()
+			end)
+			
+			camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
+				self.CameraSubject = camera.CameraSubject
+				self:UpdatePopperNearPlaneZ()
+			end)
+			
+			return self
+		end
+		
+		function CameraHandler:UpdatePopperProjection()
+			popper:UpdateProjection(self.FieldOfView, self.ViewportSize)
+		end
+		
+		function CameraHandler:UpdatePopperNearPlaneZ()
+			popper:UpdateNearPlaneZ(self.NearPlaneZ)
+		end
+		
+		function CameraHandler:UpdateCameraSubject()
+			popper:UpdateCameraSubject(self.CameraSubject)
+		end
+		
+	end
+	
+	cameraHandler = CameraHandler.new()
+end
 
 local localPlayerD = PlayerHandler.new().LocalPlayer
 
@@ -245,8 +291,6 @@ end
 local Popper = {} do
 	Popper.__index = Popper
 	
-	local camera = workspace.CurrentCamera
-	
 	--------------------------------------------------------------------------------------------
 	-- Popper uses the level geometry find an upper bound on subject-to-camera distance.
 	--
@@ -264,50 +308,45 @@ local Popper = {} do
 	-- lies between the current and target camera positions.
 	--------------------------------------------------------------------------------------------
 	
-	function Popper.new()
+	function Popper.new(camera)
 		local self = setmetatable({}, Popper)
 		
-		self.nearPlaneZ = nil
-		self.projX = nil
-		self.projY = nil
+		self.NearPlaneZ = nil
+		self.ProjX = nil
+		self.ProjY = nil
 		
-		self.subjectRoot = nil
-		self.subjectPart = nil
+		self.SubjectRoot = nil
+		self.SubjectPart = nil
 		
-		local function updateProjection()
-			local fov = math.rad(camera.FieldOfView)
-			local view = camera.ViewportSize
-			local ar = view.X / view.Y
-			
-			self.projY = 2 * math.tan(fov / 2)
-			self.projX = ar * self.projY
-		end
-		
-		camera:GetPropertyChangedSignal("FieldOfView"):Connect(updateProjection)
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateProjection)
-		
-		updateProjection()
-		
-		self.nearPlaneZ = camera.NearPlaneZ
-		camera:GetPropertyChangedSignal("NearPlaneZ"):Connect(function()
-			self.nearPlaneZ = camera.NearPlaneZ
-		end)
-		
-		
-		camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
-			local subject = camera.CameraSubject
-			if subject:IsA("Humanoid") then
-				self.subjectPart = subject.RootPart
-			elseif subject:IsA("BasePart") then
-				self.subjectPart = subject
-			else
-				self.subjectPart = nil
-			end
-		end)
+		self.ViewportSize = nil
+		self.CameraObject = camera
 		
 		return self
 	end
 	
+	function Popper:UpdateProjection(fieldOfView, viewportSize)
+		local fov = math.rad(fieldOfView)
+		local view = viewportSize
+		local ar = view.X / view.Y
+		
+		self.ProjY = 2 * math.tan(fov / 2)
+		self.ProjX = ar * self.ProjY
+		self.ViewportSize = viewportSize
+	end
+	
+	function Popper:UpdateNearPlaneZ(nearPlaneZ)
+		self.NearPlaneZ = nearPlaneZ
+	end
+	
+	function Popper:UpdateCameraSubject(subject)
+		if subject:IsA("Humanoid") then
+			self.SubjectPart = subject.RootPart
+		elseif subject:IsA("BasePart") then
+			self.SubjectPart = subject
+		else
+			self.SubjectPart = nil
+		end
+	end
 	
 	local function eraseFromEnd(t, toSize)
 		for i = #t, toSize + 1, -1 do
@@ -315,11 +354,8 @@ local Popper = {} do
 		end
 	end
 	
-	local ray = Ray.new
+	local newRay = Ray.new
 	local blacklist = characterContainer.Characters
-	
-	-- Maximum number of rays that can be cast
-	local QUERY_POINT_CAST_LIMIT = 64
 	
 	--------------------------------------------------------------------------------
 	-- Piercing raycasts
@@ -329,7 +365,7 @@ local Popper = {} do
 		local originalSize = #blacklist
 		repeat
 			local hitPart, hitPoint = workspace:FindPartOnRayWithIgnoreList(
-				ray(origin, dir), blacklist, false, true
+				newRay(origin, dir), blacklist, false, true
 			)
 			
 			if hitPart then
@@ -351,7 +387,7 @@ local Popper = {} do
 		return 1 - (1 - part.Transparency) * (1 - part.LocalTransparencyModifier)
 	end
 	
-	local function canOcclude(part)
+	local function canOcclude(part, subjectRoot)
 		-- Occluders must be:
 		-- 1. Opaque
 		-- 2. Interactable
@@ -363,12 +399,15 @@ local Popper = {} do
 			and not part:IsA("TrussPart")
 	end
 	
-	function Popper:queryPoint(origin, unitDir, dist, lastPos)
+	-- Maximum number of rays that can be cast
+	local QUERY_POINT_CAST_LIMIT = 64
+	
+	function Popper:_QueryPoint(origin, unitDir, dist, lastPos)
 		debug.profilebegin("queryPoint")
 		
 		local originalSize = #blacklist
 		
-		local nearPlaneZ = self.nearPlaneZ
+		local nearPlaneZ = self.NearPlaneZ
 		dist += nearPlaneZ
 		local target = origin + unitDir*dist
 		
@@ -378,26 +417,28 @@ local Popper = {} do
 		
 		local numPierced = 0
 		
+		local subjectRoot = self.SubjectRoot
+		
 		repeat
 			local entryPart, entryPos = workspace:FindPartOnRayWithIgnoreList(
-				ray(movingOrigin, target - movingOrigin), blacklist, false, true)
+				newRay(movingOrigin, target - movingOrigin), blacklist, false, true)
 			numPierced += 1
 			
 			if entryPart then
 				-- forces the current iteration into a hard limit to cap the number of raycasts
 				local earlyAbort = numPierced >= QUERY_POINT_CAST_LIMIT
 				
-				if canOcclude(entryPart) or earlyAbort then
+				if canOcclude(entryPart, subjectRoot) or earlyAbort then
 					local wl = {entryPart}
-					local exitPart = workspace:FindPartOnRayWithWhitelist(ray(target, entryPos - target), wl, true)
+					local exitPart = workspace:FindPartOnRayWithWhitelist(newRay(target, entryPos - target), wl, true)
 					
 					local lim = (entryPos - origin).Magnitude
 					
 					if exitPart and not earlyAbort then
 						local promote = false
 						if lastPos then
-							promote = workspace:FindPartOnRayWithWhitelist(ray(lastPos, target - lastPos), wl, true)
-								or workspace:FindPartOnRayWithWhitelist(ray(target, lastPos - target), wl, true)
+							promote = workspace:FindPartOnRayWithWhitelist(newRay(lastPos, target - lastPos), wl, true)
+								or workspace:FindPartOnRayWithWhitelist(newRay(target, lastPos - target), wl, true)
 						end
 						
 						if promote then
@@ -424,7 +465,7 @@ local Popper = {} do
 		return softLimit - nearPlaneZ, hardLimit - nearPlaneZ
 	end
 	
-	function Popper:queryViewport(focus, dist)
+	function Popper:_QueryViewport(focus, dist)
 		debug.profilebegin("queryViewport")
 		
 		local fP =  focus.p
@@ -432,14 +473,16 @@ local Popper = {} do
 		local fY =  focus.upVector
 		local fZ = -focus.lookVector
 		
-		local viewport = camera.ViewportSize
+		local viewport = self.ViewportSize
 		
 		local hardBoxLimit = math.huge
 		local softBoxLimit = math.huge
 		
-		local projX = self.projX
-		local projY = self.projY
-		local nearPlaneZ = self.nearPlaneZ
+		local projX = self.ProjX
+		local projY = self.ProjY
+		local nearPlaneZ = self.NearPlaneZ
+		
+		local camera = self.CameraObject
 		
 		-- Center the viewport on the PoI, sweep points on the edge towards the target, and take the minimum limits
 		for viewX = 0, 1 do
@@ -454,7 +497,7 @@ local Popper = {} do
 					viewport.y * viewY
 				).Origin
 				
-				local softPointLimit, hardPointLimit = self:queryPoint(origin, fZ, dist, lastPos)
+				local softPointLimit, hardPointLimit = self:_QueryPoint(origin, fZ, dist, lastPos)
 				
 				if hardPointLimit < hardBoxLimit then
 					hardBoxLimit = hardPointLimit
@@ -481,8 +524,8 @@ local Popper = {} do
 		Vector2.new( 0.0, 0.2),
 	}
 	
-	function Popper:testPromotion(focus, dist, focusExtrapolation)
-		debug.profilebegin("testPromotion")
+	function Popper:_TestPromotion(focus, dist, focusExtrapolation)
+		debug.profilebegin("TestPromotion")
 		
 		local fP = focus.p
 		local fX = focus.rightVector
@@ -504,7 +547,7 @@ local Popper = {} do
 			for dt = 0, limit, SAMPLE_DT do
 				local cfDt = focusExtrapolation.extrapolate(dt) -- Extrapolated CFrame at time dt
 				
-				if self:queryPoint(cfDt.p, -cfDt.lookVector, dist) >= dist then
+				if self:_QueryPoint(cfDt.p, -cfDt.lookVector, dist) >= dist then
 					return false
 				end
 			end
@@ -519,7 +562,7 @@ local Popper = {} do
 			for _, offset in next, SCAN_SAMPLE_OFFSETS do
 				local scaledOffset = offset
 				local pos = getCollisionPoint(fP, fX * scaledOffset.x + fY * scaledOffset.y)
-				if self:queryPoint(pos, (fP + fZ * dist - pos).Unit, dist) == math.huge then
+				if self:_QueryPoint(pos, (fP + fZ * dist - pos).Unit, dist) == math.huge then
 					return false
 				end
 			end
@@ -531,23 +574,23 @@ local Popper = {} do
 		return true
 	end
 	
-	function Popper:run(focus, targetDist, focusExtrapolation)
-		debug.profilebegin("popper")
-		local subjectPart = self.subjectPart
-		self.subjectRoot = subjectPart and subjectPart:GetRootPart() or subjectPart
+	function Popper:Run(focus, targetDist, focusExtrapolation)
+		debug.profilebegin("Popper")
+		local subjectPart = self.SubjectPart
+		self.SubjectRoot = subjectPart and subjectPart:GetRootPart() or subjectPart
 		
 		local dist = targetDist
-		local soft, hard = self:queryViewport(focus, targetDist)
+		local soft, hard = self:_QueryViewport(focus, targetDist)
 		
 		if hard < dist then
 			dist = hard
 		end
 		
-		if soft < dist and self:testPromotion(focus, targetDist, focusExtrapolation) then
+		if soft < dist and self:_TestPromotion(focus, targetDist, focusExtrapolation) then
 			dist = soft
 		end
 		
-		subjectRoot = nil
+		self.SubjectRoot = nil
 		
 		debug.profileend()
 		return dist
@@ -555,7 +598,9 @@ local Popper = {} do
 	
 end
 
-popper = Popper.new()
+popper = Popper.new(cameraHandler.CameraObject)
+cameraHandler:UpdatePopperProjection()
+cameraHandler:UpdatePopperNearPlaneZ()
 
 local ZoomController = {} do
 	-- Controls the distance between the focus and the camera.
@@ -654,7 +699,7 @@ local ZoomController = {} do
 			)
 			
 			-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
-			poppedZoom = popper:run(
+			poppedZoom = popper:Run(
 				focus * CFrame.new(0, 0, MIN_FOCUS_DIST),
 				maxPossibleZoom - MIN_FOCUS_DIST,
 				extrapolation
