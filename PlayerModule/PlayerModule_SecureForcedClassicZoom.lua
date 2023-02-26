@@ -132,7 +132,7 @@ local LocalPlayerHandler = {} do
 	
 	function LocalPlayerHandler:OnCharacterAdded(character)
 		Player.OnCharacterAdded(self, character)
-		
+		cameraModule.CameraController:OnCharacterAdded(character)
 		controlModule:UpdateTouchGuiVisibility(character)
 	end
 	
@@ -200,42 +200,57 @@ local cameraHandler do
 			
 			self.NearPlaneZ = camera.NearPlaneZ
 			self.CameraSubject = camera.CameraSubject
+			self.CameraType = camera.CameraType
 			
 			camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
 				self.FieldOfView = camera.FieldOfView
-				self:UpdatePopperProjection()
+				self:OnFieldOfViewChanged()
 			end)
 			
 			camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 				self.ViewportSize = camera.ViewportSize
-				self:UpdatePopperProjection()
+				self:OnViewportSizeChanged()
 			end)
 			
 			camera:GetPropertyChangedSignal("NearPlaneZ"):Connect(function()
 				self.NearPlaneZ = camera.NearPlaneZ
-				self:UpdatePopperNearPlaneZ()
+				self:OnNearPlaneZChanged()
 			end)
 			
 			camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
 				self.CameraSubject = camera.CameraSubject
-				self:UpdatePopperNearPlaneZ()
+				self:UpdateCameraSubject()
+			end)
+			
+			camera:GetPropertyChangedSignal("CameraType"):Connect(function()
+				self.CameraType = camera.CameraType
+				self:OnCameraTypeChanged()
 			end)
 			
 			return self
 		end
 		
-		function CameraHandler:UpdatePopperProjection()
+		function CameraHandler:OnFieldOfViewChanged()
 			popper:UpdateProjection(self.FieldOfView, self.ViewportSize)
 		end
 		
-		function CameraHandler:UpdatePopperNearPlaneZ()
+		function CameraHandler:OnViewportSizeChanged()
+			popper:UpdateProjection(self.FieldOfView, self.ViewportSize)
+			cameraModule:OnViewportSizeChanged(self.ViewportSize)
+		end
+		
+		function CameraHandler:OnNearPlaneZChanged()
 			popper:UpdateNearPlaneZ(self.NearPlaneZ)
 		end
 		
 		function CameraHandler:UpdateCameraSubject()
 			popper:UpdateCameraSubject(self.CameraSubject)
+			cameraModule:OnCameraSubjectChanged(self.CameraSubject, self.CameraType)
 		end
 		
+		function CameraHandler:OnCameraTypeChanged()
+			cameraModule:OnCameraTypeChanged(self.CameraType)
+		end
 	end
 	
 	cameraHandler = CameraHandler.new()
@@ -599,8 +614,8 @@ local Popper = {} do
 end
 
 popper = Popper.new(cameraHandler.CameraObject)
-cameraHandler:UpdatePopperProjection()
-cameraHandler:UpdatePopperNearPlaneZ()
+popper:UpdateProjection(cameraHandler.FieldOfView, cameraHandler.ViewportSize)
+popper:UpdateNearPlaneZ(cameraHandler.NearPlaneZ)
 
 local ZoomController = {} do
 	-- Controls the distance between the focus and the camera.
@@ -612,30 +627,16 @@ local ZoomController = {} do
 	local MIN_FOCUS_DIST = 0.5
 	local DIST_OPAQUE = 1
 	
-	local cameraMinZoomDistance, cameraMaxZoomDistance do
-		
-		local function updateBounds()
-			cameraMinZoomDistance = localPlayer.CameraMinZoomDistance
-			cameraMaxZoomDistance = localPlayer.CameraMaxZoomDistance
-		end
-		
-		updateBounds()
-		
-		localPlayer:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(updateBounds)
-		localPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(updateBounds)
-	end
-	
 	local ConstrainedSpring = {} do
 		ConstrainedSpring.__index = ConstrainedSpring
 		
-		function ConstrainedSpring.new(freq: number, x: number, minValue: number, maxValue: number)
-			x = math.clamp(x, minValue, maxValue)
+		function ConstrainedSpring.new(freq: number, x: number)
 			return setmetatable({
 				freq = freq, -- Undamped frequency (Hz)
 				x = x, -- Current position
 				v = 0, -- Current velocity
-				minValue = minValue, -- Minimum bound
-				maxValue = maxValue, -- Maximum bound
+				minValue = 0, -- Minimum bound
+				maxValue = 0, -- Maximum bound
 				goal = x, -- Goal position
 			}, ConstrainedSpring)
 		end
@@ -676,7 +677,7 @@ local ZoomController = {} do
 		end
 	end
 	
-	local zoomSpring = ConstrainedSpring.new(ZOOM_STIFFNESS, ZOOM_DEFAULT, MIN_FOCUS_DIST, cameraMaxZoomDistance)
+	local zoomSpring = ConstrainedSpring.new(ZOOM_STIFFNESS, ZOOM_DEFAULT)
 	
 	local function stepTargetZoom(z: number, dz: number, zoomMin: number, zoomMax: number)
 		z = math.clamp(z + dz * (1 + z * ZOOM_ACCELERATION), zoomMin, zoomMax)
@@ -688,14 +689,14 @@ local ZoomController = {} do
 	
 	local zoomDelta = 0
 	
-	function ZoomController.Update(renderDt: number, focus: CFrame, extrapolation)
+	function ZoomController.Update(renderDt: number, focus: CFrame, extrapolation, min, max)
 		local poppedZoom = math.huge
 		
 		if zoomSpring.goal > DIST_OPAQUE then
 			-- Make a pessimistic estimate of zoom distance for this step without accounting for poppercam
 			local maxPossibleZoom = math.max(
 				zoomSpring.x,
-				stepTargetZoom(zoomSpring.goal, zoomDelta, cameraMinZoomDistance, cameraMaxZoomDistance)
+				stepTargetZoom(zoomSpring.goal, zoomDelta, min, max)
 			)
 			
 			-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
@@ -707,7 +708,7 @@ local ZoomController = {} do
 		end
 		
 		zoomSpring.minValue = MIN_FOCUS_DIST
-		zoomSpring.maxValue = math.min(cameraMaxZoomDistance, poppedZoom)
+		zoomSpring.maxValue = math.min(max, poppedZoom)
 		
 		return zoomSpring:Step(renderDt)
 	end
@@ -719,11 +720,6 @@ local ZoomController = {} do
 	function ZoomController.SetZoomParameters(targetZoom, newZoomDelta)
 		zoomSpring.goal = targetZoom
 		zoomDelta = newZoomDelta
-	end
-	
-	function ZoomController.ReleaseSpring()
-		zoomSpring.x = zoomSpring.goal
-		zoomSpring.v = 0
 	end
 	
 end
@@ -1216,20 +1212,20 @@ local BaseCamera = {} do
 		-- So that derived classes have access to this
 		self.FirstPersonDistanceThreshold = 1 -- Below this value, snap into first person
 		
-		self.lastCameraTransform = nil
 		self.lastUserPanCamera = tick()
 		
 		-- Subject and position on last update call
 		self.lastSubject = nil
 		self.lastSubjectPosition = Vector3.new(0, 5, 0)
-		self.lastSubjectCFrame = CFrame.new(self.lastSubjectPosition)
+		
+		self.CameraMinZoomDistance = 0
+		self.CameraMaxZoomDistance = 2500
 		
 		-- These subject distance members refer to the nominal camera-to-subject follow distance that the camera
 		-- is trying to maintain, not the actual measured value.
 		-- The default is updated when screen orientation or the min/max distances change,
 		-- to be sure the default is always in range and appropriate for the orientation.
-		self.defaultSubjectDistance = math.clamp(DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
-		self.currentSubjectDistance = math.clamp(DEFAULT_DISTANCE, localPlayer.CameraMinZoomDistance, localPlayer.CameraMaxZoomDistance)
+		self.currentSubjectDistance = math.clamp(DEFAULT_DISTANCE, self.CameraMinZoomDistance, self.CameraMaxZoomDistance)
 		
 		self.inFirstPerson = false
 		self.inMouseLockedMode = false
@@ -1245,7 +1241,6 @@ local BaseCamera = {} do
 		
 		self.PlayerGui = nil
 		
-		self.viewportSizeChangedConn = nil
 		self.gamepadZoomPressConnection = nil
 		
 		
@@ -1254,48 +1249,13 @@ local BaseCamera = {} do
 		-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
 		-- when needed, so the code here may run well after the start of the game
 		
-		if localPlayer.Character then
-			self:OnCharacterAdded(localPlayer.Character)
-		end
-		
-		localPlayer.CharacterAdded:Connect(function(char)
-			self:OnCharacterAdded(char)
-		end)
-		
-		if self.playerCameraModeChangeConn then self.playerCameraModeChangeConn:Disconnect() end
-		self.playerCameraModeChangeConn = localPlayer:GetPropertyChangedSignal("CameraMode"):Connect(function()
-			self:OnPlayerCameraPropertyChange()
-		end)
-		
-		if self.minDistanceChangeConn then self.minDistanceChangeConn:Disconnect() end
-		self.minDistanceChangeConn = localPlayer:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
-			self:OnPlayerCameraPropertyChange()
-		end)
-		
-		if self.maxDistanceChangeConn then self.maxDistanceChangeConn:Disconnect() end
-		self.maxDistanceChangeConn = localPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
-			self:OnPlayerCameraPropertyChange()
-		end)
-		
-		if self.gameSettingsTouchMoveMoveChangeConn then self.gameSettingsTouchMoveMoveChangeConn:Disconnect() end
-		self.gameSettingsTouchMoveMoveChangeConn = UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
+		UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
 			self:OnGameSettingsTouchMovementModeChanged()
 		end)
-		self:OnGameSettingsTouchMovementModeChanged() -- Init
+		self:OnGameSettingsTouchMovementModeChanged()
 		
 		UserGameSettings:SetCameraYInvertVisible()
 		UserGameSettings:SetGamepadCameraSensitivityVisible()
-		
-		self.hasGameLoaded = game:IsLoaded()
-		if not self.hasGameLoaded then
-			self.gameLoadedConn = game.Loaded:Connect(function()
-				self.hasGameLoaded = true
-				self.gameLoadedConn:Disconnect()
-				self.gameLoadedConn = nil
-			end)
-		end
-		
-		self:OnPlayerCameraPropertyChange()
 		
 		return self
 	end
@@ -1350,61 +1310,61 @@ local BaseCamera = {} do
 	
 	function BaseCamera:GetSubjectPosition(): Vector3?
 		local result = self.lastSubjectPosition
-		local camera = workspace.CurrentCamera
-		local cameraSubject = camera and camera.CameraSubject
+		local cameraSubject = cameraHandler.CameraSubject
 		
-		if cameraSubject then
-			if cameraSubject:IsA("Humanoid") then
-				local humanoid = cameraSubject
-				local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
-				
-				local bodyPartToFollow = humanoid.RootPart
-				
-				-- If the humanoid is dead, prefer their head part as a follow target, if it exists
-				if humanoidIsDead then
-					if humanoid.Parent and humanoid.Parent:IsA("Model") then
-						bodyPartToFollow = humanoid.Parent:FindFirstChild("Head") or bodyPartToFollow
-					end
-				end
-				
-				if bodyPartToFollow and bodyPartToFollow:IsA("BasePart") then
-					local heightOffset
-					if humanoid.RigType == Enum.HumanoidRigType.R15 then
-						if humanoid.AutomaticScalingEnabled then
-							heightOffset = R15_HEAD_OFFSET
-							if bodyPartToFollow == humanoid.RootPart then
-								local rootPartSizeOffset = (humanoid.RootPart.Size.Y / 2) - (HUMANOID_ROOT_PART_SIZE.Y / 2)
-								heightOffset = heightOffset + Vector3.new(0, rootPartSizeOffset, 0)
-							end
-						else
-							heightOffset = R15_HEAD_OFFSET_NO_SCALING
-						end
-					else
-						heightOffset = HEAD_OFFSET
-					end
-					
-					if humanoidIsDead then
-						heightOffset = Vector3.zero
-					end
-					
-					result = bodyPartToFollow.CFrame.p + bodyPartToFollow.CFrame:vectorToWorldSpace(heightOffset + humanoid.CameraOffset)
-				end
-				
-			elseif cameraSubject:IsA("BasePart") then
-				result = cameraSubject.CFrame.p
-			elseif cameraSubject:IsA("Model") then
-				if cameraSubject.PrimaryPart then
-					result = cameraSubject:GetPrimaryPartCFrame().p
-				else
-					result = cameraSubject:GetModelCFrame().p
-				end
-			end
-		else
+		if not cameraSubject then
 			-- cameraSubject is nil
 			-- Note: Previous RootCamera did not have this else case and let self.lastSubject and self.lastSubjectPosition
 			-- both get set to nil in the case of cameraSubject being nil. This function now exits here to preserve the
 			-- last set valid values for these, as nil values are not handled cases
 			return nil
+		end
+		
+		if cameraSubject:IsA("Humanoid") then
+			local humanoid = cameraSubject
+			local humanoidIsDead = humanoid:GetState() == Enum.HumanoidStateType.Dead
+			
+			local bodyPartToFollow = humanoid.RootPart
+			
+			-- If the humanoid is dead, prefer their head part as a follow target, if it exists
+			if humanoidIsDead then
+				if humanoid.Parent and humanoid.Parent:IsA("Model") then
+					bodyPartToFollow = humanoid.Parent:FindFirstChild("Head") or bodyPartToFollow
+				end
+			end
+			
+			if bodyPartToFollow and bodyPartToFollow:IsA("BasePart") then
+				local heightOffset
+				if humanoid.RigType == Enum.HumanoidRigType.R15 then
+					if humanoid.AutomaticScalingEnabled then
+						heightOffset = R15_HEAD_OFFSET
+						if bodyPartToFollow == humanoid.RootPart then
+							local rootPartSizeOffset = (humanoid.RootPart.Size.Y / 2) - (HUMANOID_ROOT_PART_SIZE.Y / 2)
+							heightOffset = heightOffset + Vector3.new(0, rootPartSizeOffset, 0)
+						end
+					else
+						heightOffset = R15_HEAD_OFFSET_NO_SCALING
+					end
+				else
+					heightOffset = HEAD_OFFSET
+				end
+				
+				if humanoidIsDead then
+					heightOffset = Vector3.zero
+				end
+				
+				result = bodyPartToFollow.CFrame.p + bodyPartToFollow.CFrame:vectorToWorldSpace(
+					heightOffset + humanoid.CameraOffset)
+			end
+			
+		elseif cameraSubject:IsA("BasePart") then
+			result = cameraSubject.CFrame.p
+		elseif cameraSubject:IsA("Model") then
+			if cameraSubject.PrimaryPart then
+				result = cameraSubject:GetPrimaryPartCFrame().p
+			else
+				result = cameraSubject:GetModelCFrame().p
+			end
 		end
 		
 		self.lastSubject = cameraSubject
@@ -1413,45 +1373,10 @@ local BaseCamera = {} do
 		return result
 	end
 	
-	function BaseCamera:UpdateDefaultSubjectDistance()
-		if self.portraitMode then
-			self.defaultSubjectDistance = math.clamp(
-				PORTRAIT_DEFAULT_DISTANCE,
-				localPlayer.CameraMinZoomDistance,
-				localPlayer.CameraMaxZoomDistance
-			)
-		else
-			self.defaultSubjectDistance = math.clamp(
-				DEFAULT_DISTANCE,
-				localPlayer.CameraMinZoomDistance,
-				localPlayer.CameraMaxZoomDistance
-			)
-		end
-	end
-	
 	function BaseCamera:OnViewportSizeChanged(currentCamera)
 		local size = currentCamera.ViewportSize
 		self.portraitMode = size.X < size.Y
 		self.isSmallTouchScreen = UserInputService.TouchEnabled and (size.Y < 500 or size.X < 700)
-		
-		self:UpdateDefaultSubjectDistance()
-	end
-	
-	-- Listener for changes to workspace.CurrentCamera
-	function BaseCamera:OnCurrentCameraChanged(currentCamera)
-		if not UserInputService.TouchEnabled then return end
-		
-		if self.viewportSizeChangedConn then
-			self.viewportSizeChangedConn:Disconnect()
-			self.viewportSizeChangedConn = nil
-		end
-		
-		if currentCamera then
-			self:OnViewportSizeChanged(currentCamera)
-			self.viewportSizeChangedConn = currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-				self:OnViewportSizeChanged(currentCamera)
-			end)
-		end
 	end
 	
 	function BaseCamera:OnDynamicThumbstickEnabled()
@@ -1471,11 +1396,6 @@ local BaseCamera = {} do
 		else
 			self:OnDynamicThumbstickDisabled()
 		end
-	end
-	
-	function BaseCamera:OnPlayerCameraPropertyChange()
-		-- This call forces re-evaluation of player.CameraMode and clamping to min/max distance which may have changed
-		self:SetCameraToSubjectDistance(self.currentSubjectDistance)
 	end
 	
 	function BaseCamera:GamepadZoomPress()
@@ -1523,14 +1443,6 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:Cleanup()
-		if self.viewportSizeChangedConn then
-			self.viewportSizeChangedConn:Disconnect()
-			self.viewportSizeChangedConn = nil
-		end
-		
-		self.lastCameraTransform = nil
-		self.lastSubjectCFrame = nil
-		
 		-- Unlock mouse for example if right mouse button was being held down
 		CameraUtils.restoreMouseBehavior()
 	end
@@ -1546,9 +1458,9 @@ local BaseCamera = {} do
 		end
 	end
 	
-	function BaseCamera:UpdateForDistancePropertyChange()
-		-- Calling this setter with the current value will force checking that it is still
-		-- in range after a change to the min/max distance limits
+	-- Calling this setter with the current value will force checking that it is still
+	-- in range after a change to the min/max distance limits
+	function BaseCamera:UpdateMaxMinZoomDistance()
 		self:SetCameraToSubjectDistance(self.currentSubjectDistance)
 	end
 	
@@ -1562,8 +1474,8 @@ local BaseCamera = {} do
 		
 		local newSubjectDistance = math.clamp(
 			desiredSubjectDistance,
-			localPlayer.CameraMinZoomDistance,
-			localPlayer.CameraMaxZoomDistance
+			self.CameraMinZoomDistance,
+			self.CameraMaxZoomDistance
 		)
 		
 		if newSubjectDistance < self.FirstPersonDistanceThreshold then
@@ -1618,7 +1530,7 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:GetCameraLookVector(): Vector3
-		return workspace.CurrentCamera and workspace.CurrentCamera.CFrame.LookVector or UNIT_Z
+		return cameraHandler.CameraObject.CFrame.LookVector or UNIT_Z
 	end
 	
 	function BaseCamera:CalculateNewLookCFrameFromArg(suppliedLookVector: Vector3?, rotateInput: Vector2): CFrame
@@ -1741,7 +1653,7 @@ local Poppercam = {} do
 		self.focusExtrapolator:Reset()
 	end
 	
-	function Poppercam:Update(renderDt, desiredCameraCFrame, desiredCameraFocus, cameraController)
+	function Poppercam:Update(renderDt, desiredCameraCFrame, desiredCameraFocus, min, max)
 		local rotatedFocus = CFrame.new(desiredCameraFocus.p, desiredCameraCFrame.p)
 			* CFrame.new(
 				0, 0, 0,
@@ -1751,7 +1663,7 @@ local Poppercam = {} do
 			)
 		
 		local extrapolation = self.focusExtrapolator:Step(renderDt, rotatedFocus)
-		local zoom = ZoomController.Update(renderDt, rotatedFocus, extrapolation)
+		local zoom = ZoomController.Update(renderDt, rotatedFocus, extrapolation, min, max)
 		
 		return rotatedFocus * CFrame.new(0, 0, zoom), desiredCameraFocus
 	end
@@ -1818,6 +1730,8 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		
 		self.lastUpdate = tick()
 		self.cameraToggleSpring = Spring.new(5, 0)
+		self.OcclusionModule = Poppercam.new()
+		self.OcclusionModule:Enable(true)
 		
 		return self
 	end
@@ -1830,11 +1744,11 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		return isFinite(vec3.X) and isFinite(vec3.Y) and isFinite(vec3.Z)
 	end
 	
-	function ClassicCamera:Update()
+	function ClassicCamera:Update(dt)
 		local now = tick()
 		local timeDelta = now - self.lastUpdate
 		
-		local camera = workspace.CurrentCamera
+		local camera = cameraHandler.CameraObject
 		local newCameraCFrame = camera.CFrame
 		local newCameraFocus = camera.Focus
 		
@@ -1852,10 +1766,6 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		local humanoid = self:GetHumanoid()
 		local cameraSubject = camera.CameraSubject
 		local isClimbing = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Climbing
-		
-		if self.lastUpdate == nil or timeDelta > 1 then
-			self.lastCameraTransform = nil
-		end
 		
 		local rotateInput = CameraInput.getRotation()
 		
@@ -1893,15 +1803,14 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 			
 			local cameraFocusP = newCameraFocus.p
 			local newLookVector = self:CalculateNewLookVectorFromArg(overrideCameraLookVector, rotateInput)
+			
 			newCameraCFrame = CFrame.new(cameraFocusP - (zoom * newLookVector), cameraFocusP)
-			
-			self.lastCameraTransform = newCameraCFrame
-			self.lastCameraFocus = newCameraFocus
-			
-			self.lastSubjectCFrame = nil
 		end
 		
 		self.lastUpdate = now
+		
+		newCameraCFrame, newCameraFocus = self.OcclusionModule:Update(dt, newCameraCFrame, newCameraFocus,
+			self.CameraMinZoomDistance, self.CameraMaxZoomDistance)
 		return newCameraCFrame, newCameraFocus
 	end
 	
@@ -2164,11 +2073,11 @@ local TransparencyController = {} do
 	end
 	
 	function TransparencyController:Update(dt)
-		local currentCamera = workspace.CurrentCamera
+		local camera = cameraHandler.CameraObject
 		
-		if currentCamera and self.enabled then
+		if camera and self.enabled then
 			-- calculate goal transparency based on distance
-			local distance = (currentCamera.Focus.p - currentCamera.CoordinateFrame.p).Magnitude
+			local distance = (camera.Focus.p - camera.CoordinateFrame.p).Magnitude
 			local transparency = (distance < 2) and (1.0 - (distance - 0.5) / 1.5) or 0 -- (7 - distance) / 5
 			if transparency < 0.5 then -- too far, don't control transparency
 				transparency = 0
@@ -2217,10 +2126,6 @@ local CameraModule = {} do
 		2018 PlayerScripts Update - AllYourBlox
 	--]]
 	
-	
-	-- Table of camera controllers that have been instantiated. They are instantiated as they are used.
-	local instantiatedOcclusionModules = {}
-	
 	-- Management of which options appear on the Roblox User Settings screen
 	do
 		local PlayerScripts = localPlayer:WaitForChild("PlayerScripts")
@@ -2238,38 +2143,18 @@ local CameraModule = {} do
 		
 		self.IsScriptableModeActive = false
 		self.CameraController = ClassicCamera.new()
-		self.OcclusionModule = Poppercam.new()
+		
 		
 		-- Current active controller instances
 		self.TransparencyController = TransparencyController.new()
 		
 		self.MouseLockController = nil
 		
-		-- Connections to events
-		self.cameraSubjectChangedConn = nil
-		self.cameraTypeChangedConn = nil
-		
-		
-		self.OcclusionModule:Enable(true)
 		self.TransparencyController:Enable(true)
 		
 		if not UserInputService.TouchEnabled then
 			self.MouseLockController = MouseLockController.new(self)
 		end
-		
-		local function zoomDistanceModeUpdate()
-			if not self.IsScriptableModeActive then
-				self.CameraController:UpdateForDistancePropertyChange()
-			end
-		end
-		
-		localPlayer:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(zoomDistanceModeUpdate)
-		localPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(zoomDistanceModeUpdate)
-		
-		self:OnCurrentCameraChanged(workspace.CurrentCamera)
-		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-			self:OnCurrentCameraChanged(workspace.CurrentCamera)
-		end)
 		
 		return self
 	end
@@ -2279,9 +2164,9 @@ local CameraModule = {} do
 		self.CameraController:Enable(not isScriptable)
 	end
 	
-	function CameraModule:OnCameraSubjectChanged(cameraSubject, currentCamera)
+	function CameraModule:OnCameraSubjectChanged(cameraSubject, cameraType)
 		self.TransparencyController:SetSubject(cameraSubject)
-		self:SetScriptable(currentCamera.CameraType == Enum.CameraType.Scriptable)
+		self:SetScriptable(cameraType == Enum.CameraType.Scriptable)
 	end
 	
 	function CameraModule:OnCameraTypeChanged(newCameraType: Enum.CameraType)
@@ -2294,30 +2179,6 @@ local CameraModule = {} do
 		end
 		
 		self:SetScriptable(isScriptable)
-	end
-	
-	function CameraModule:OnCurrentCameraChanged(currentCamera)
-		if not currentCamera then return end
-		
-		if self.cameraSubjectChangedConn then
-			self.cameraSubjectChangedConn:Disconnect()
-		end
-		
-		if self.cameraTypeChangedConn then
-			self.cameraTypeChangedConn:Disconnect()
-		end
-		
-		self.cameraSubjectChangedConn = currentCamera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
-			self:OnCameraSubjectChanged(currentCamera.CameraSubject, currentCamera)
-		end) 
-		
-		self.cameraTypeChangedConn = currentCamera:GetPropertyChangedSignal("CameraType"):Connect(function()
-			self:OnCameraTypeChanged(currentCamera.CameraType)
-		end)
-		
-		self:OnCameraSubjectChanged(currentCamera.CameraSubject, currentCamera)
-		self:OnCameraTypeChanged(currentCamera.CameraType)
-		self.CameraController:OnCurrentCameraChanged(currentCamera)
 	end
 	
 	--[[
@@ -2333,10 +2194,8 @@ local CameraModule = {} do
 		
 		local newCameraCFrame, newCameraFocus = self.CameraController:Update(dt)
 		
-		newCameraCFrame, newCameraFocus = self.OcclusionModule:Update(dt, newCameraCFrame, newCameraFocus)
-		
 		-- Here is where the new CFrame and Focus are set for this render frame
-		local currentCamera = workspace.CurrentCamera
+		local currentCamera = cameraHandler.CameraObject
 		currentCamera.CFrame = newCameraCFrame
 		currentCamera.Focus = newCameraFocus
 		
@@ -4023,7 +3882,7 @@ local ControlModule = {} do
 	end
 	
 	local function calculateRawMoveVector(cameraRelativeMoveVector: Vector3): Vector3
-		local camera = workspace.CurrentCamera
+		local camera = cameraHandler.CameraObject
 		if not camera then
 			return cameraRelativeMoveVector
 		end
