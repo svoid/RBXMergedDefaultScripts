@@ -837,340 +837,424 @@ local CameraInput = {} do
 	end)
 	
 	
-	do
-		local connectionList = {}
-		local panInputCount = 0
+	local connectionList = {}
+	local panInputCount = 0
+	
+	local function incPanInputCount()
+		panInputCount = math.max(0, panInputCount + 1)
+	end
+	
+	local function decPanInputCount()
+		panInputCount = math.max(0, panInputCount - 1)
+	end
+	
+	local function resetPanInputCount()
+		panInputCount = 0
+	end
+	
+	local gamepadState = {
+		Thumbstick2 = Vector2.zero,
+	}
+	
+	local keyboardState = {
+		Left = 0,
+		Right = 0,
+		I = 0,
+		O = 0
+	}
+	
+	local mouseState = {
+		Movement = Vector2.zero,
+		Wheel = 0, -- PointerAction
+		Pan = Vector2.zero, -- PointerAction
+		Pinch = 0, -- PointerAction
+	}
+	
+	local touchState = {
+		Move = Vector2.zero,
+		Pinch = 0,
+	}
+	
+	local gamepadZoomPressBindable = Instance.new("BindableEvent")
+	CameraInput.gamepadZoomPress = gamepadZoomPressBindable.Event
+	
+	function CameraInput.getRotation(disableKeyboardRotation: boolean?): Vector2
+		local inversionVector = Vector2.new(1, UserGameSettings:GetCameraYInvertValue())
 		
-		local function incPanInputCount()
-			panInputCount = math.max(0, panInputCount + 1)
+		-- keyboard input is non-coalesced, so must account for time delta
+		local kKeyboard = Vector2.new(keyboardState.Right - keyboardState.Left, 0)*worldDt
+		local kGamepad = gamepadState.Thumbstick2
+		local kMouse = mouseState.Movement
+		local kPointerAction = mouseState.Pan
+		local kTouch = adjustTouchPitchSensitivity(touchState.Move)
+		
+		if disableKeyboardRotation then
+			kKeyboard = Vector2.zero
 		end
 		
-		local function decPanInputCount()
-			panInputCount = math.max(0, panInputCount - 1)
-		end
+		local result =
+			kKeyboard * ROTATION_SPEED_KEYS +
+			kGamepad * ROTATION_SPEED_GAMEPAD +
+			kMouse * ROTATION_SPEED_MOUSE +
+			kPointerAction * ROTATION_SPEED_POINTERACTION +
+			kTouch * ROTATION_SPEED_TOUCH
 		
-		local function resetPanInputCount()
-			panInputCount = 0
-		end
+		return result*inversionVector
+	end
+	
+	function CameraInput.getZoomDelta(): number
+		local kKeyboard = keyboardState.O - keyboardState.I
+		local kMouse = -mouseState.Wheel + mouseState.Pinch
+		local kTouch = -touchState.Pinch
+		return kKeyboard * ZOOM_SPEED_KEYS
+			+ kMouse * ZOOM_SPEED_MOUSE
+			+ kTouch * ZOOM_SPEED_TOUCH
+	end
+	
+	local function thumbstick(action, state, input)
+		local position = input.Position
 		
-		local gamepadState = {
-			Thumbstick2 = Vector2.new(),
+		gamepadState[input.KeyCode.Name] = Vector2.new(
+			thumbstickCurve(position.X),
+			-thumbstickCurve(position.Y)
+		)
+		
+		return Enum.ContextActionResult.Pass
+	end
+	
+	local function mouseMovement(input)
+		local delta = input.Delta
+		mouseState.Movement = Vector2.new(delta.X, delta.Y)
+	end
+	
+	local function mouseWheel(action, state, input)
+		mouseState.Wheel = input.Position.Z
+		return Enum.ContextActionResult.Pass
+	end
+	
+	local function keypress(action, state, input)
+		keyboardState[input.KeyCode.Name] = state == Enum.UserInputState.Begin and 1 or 0
+	end
+	
+	local function gamepadZoomPress(action, state, input)
+		if state == Enum.UserInputState.Begin then
+			gamepadZoomPressBindable:Fire()
+		end
+	end
+	
+	local function resetInputDevices()
+		local states = {
+			gamepadState,
+			keyboardState,
+			mouseState,
+			touchState,
 		}
-		local keyboardState = {
-			Left = 0,
-			Right = 0,
-			I = 0,
-			O = 0
-		}
-		local mouseState = {
-			Movement = Vector2.new(),
-			Wheel = 0, -- PointerAction
-			Pan = Vector2.new(), -- PointerAction
-			Pinch = 0, -- PointerAction
-		}
-		local touchState = {
-			Move = Vector2.new(),
-			Pinch = 0,
-		}
 		
-		local gamepadZoomPressBindable = Instance.new("BindableEvent")
-		CameraInput.gamepadZoomPress = gamepadZoomPressBindable.Event
+		for _, device in next, states do
+			for k, v in next, device do
+				if type(v) == "boolean" then
+					device[k] = false
+				else
+					-- Mul by zero to preserve vector types
+					device[k] *= 0
+				end
+			end
+		end
+	end
+	
+	local touchBegan, touchChanged, touchEnded, resetTouchState do
+		-- Use TouchPan & TouchPinch when they work in the Studio emulator
 		
-		function CameraInput.getRotation(disableKeyboardRotation: boolean?): Vector2
-			local inversionVector = Vector2.new(1, UserGameSettings:GetCameraYInvertValue())
+		local touches: {[InputObject]: boolean?} = {} -- {[InputObject] = sunk}
+		local dynamicThumbstickInput: InputObject? -- Special-cased 
+		local lastPinchDiameter: number?
+		
+		function touchBegan(input: InputObject, sunk: boolean)
+			assert(input.UserInputType == Enum.UserInputType.Touch)
+			assert(input.UserInputState == Enum.UserInputState.Begin)
 			
-			-- keyboard input is non-coalesced, so must account for time delta
-			local kKeyboard = Vector2.new(keyboardState.Right - keyboardState.Left, 0)*worldDt
-			local kGamepad = gamepadState.Thumbstick2
-			local kMouse = mouseState.Movement
-			local kPointerAction = mouseState.Pan
-			local kTouch = adjustTouchPitchSensitivity(touchState.Move)
-			
-			if disableKeyboardRotation then
-				kKeyboard = Vector2.new()
+			if dynamicThumbstickInput == nil and isInDynamicThumbstickArea(input.Position) and not sunk then
+				-- any finger down starting in the dynamic thumbstick area should always be
+				-- ignored for camera purposes. these must be handled specially from all other
+				-- inputs, as the DT does not sink inputs by itself
+				dynamicThumbstickInput = input
+				return
 			end
 			
-			local result =
-				kKeyboard * ROTATION_SPEED_KEYS +
-				kGamepad * ROTATION_SPEED_GAMEPAD +
-				kMouse * ROTATION_SPEED_MOUSE +
-				kPointerAction * ROTATION_SPEED_POINTERACTION +
-				kTouch * ROTATION_SPEED_TOUCH
+			if not sunk then
+				incPanInputCount()
+			end
 			
-			return result*inversionVector
+			-- register the finger
+			touches[input] = sunk
 		end
 		
-		function CameraInput.getZoomDelta(): number
-			local kKeyboard = keyboardState.O - keyboardState.I
-			local kMouse = -mouseState.Wheel + mouseState.Pinch
-			local kTouch = -touchState.Pinch
-			return kKeyboard * ZOOM_SPEED_KEYS
-				+ kMouse * ZOOM_SPEED_MOUSE
-				+ kTouch * ZOOM_SPEED_TOUCH
+		function touchEnded(input: InputObject, sunk: boolean)
+			assert(input.UserInputType == Enum.UserInputType.Touch)
+			assert(input.UserInputState == Enum.UserInputState.End)
+			
+			-- reset the DT input
+			if input == dynamicThumbstickInput then
+				dynamicThumbstickInput = nil
+			end
+			
+			-- reset pinch state if one unsunk finger lifts
+			if touches[input] == false then
+				lastPinchDiameter = nil
+				decPanInputCount()
+			end
+			
+			-- unregister input
+			touches[input] = nil
 		end
 		
-		do
-			local function thumbstick(action, state, input)
-				local position = input.Position
-				
-				gamepadState[input.KeyCode.Name] = Vector2.new(
-					thumbstickCurve(position.X),
-					-thumbstickCurve(position.Y)
-				)
-				
-				return Enum.ContextActionResult.Pass
+		function touchChanged(input, sunk)
+			assert(input.UserInputType == Enum.UserInputType.Touch)
+			assert(input.UserInputState == Enum.UserInputState.Change)
+			
+			-- ignore movement from the DT finger
+			if input == dynamicThumbstickInput then
+				return
 			end
 			
-			local function mouseMovement(input)
-				local delta = input.Delta
-				mouseState.Movement = Vector2.new(delta.X, delta.Y)
+			-- fixup unknown touches
+			if touches[input] == nil then
+				touches[input] = sunk
 			end
 			
-			local function mouseWheel(action, state, input)
-				mouseState.Wheel = input.Position.Z
-				return Enum.ContextActionResult.Pass
-			end
-			
-			local function keypress(action, state, input)
-				keyboardState[input.KeyCode.Name] = state == Enum.UserInputState.Begin and 1 or 0
-			end
-			
-			local function gamepadZoomPress(action, state, input)
-				if state == Enum.UserInputState.Begin then
-					gamepadZoomPressBindable:Fire()
+			-- collect unsunk touches
+			local unsunkTouches = {}
+			for touch, sunk in next, touches do
+				if not sunk then
+					table.insert(unsunkTouches, touch)
 				end
 			end
 			
-			local function resetInputDevices()
-				local states = {
-					gamepadState,
-					keyboardState,
-					mouseState,
-					touchState,
-				}
-				
-				for _, device in next, states do
-					for k, v in next, device do
-						if type(v) == "boolean" then
-							device[k] = false
-						else
-							-- Mul by zero to preserve vector types
-							device[k] *= 0
-						end
-					end
+			-- 1 finger: pan
+			if #unsunkTouches == 1 then
+				if touches[input] == false then
+					local delta = input.Delta
+					-- total touch pan movement (reset at end of frame)
+					touchState.Move += Vector2.new(delta.X, delta.Y)
 				end
 			end
 			
-			local touchBegan, touchChanged, touchEnded, resetTouchState do
-				-- Use TouchPan & TouchPinch when they work in the Studio emulator
+			-- 2 fingers: pinch
+			if #unsunkTouches == 2 then
+				local pinchDiameter = (unsunkTouches[1].Position - unsunkTouches[2].Position).Magnitude
 				
-				local touches: {[InputObject]: boolean?} = {} -- {[InputObject] = sunk}
-				local dynamicThumbstickInput: InputObject? -- Special-cased 
-				local lastPinchDiameter: number?
-				
-				function touchBegan(input: InputObject, sunk: boolean)
-					assert(input.UserInputType == Enum.UserInputType.Touch)
-					assert(input.UserInputState == Enum.UserInputState.Begin)
-					
-					if dynamicThumbstickInput == nil and isInDynamicThumbstickArea(input.Position) and not sunk then
-						-- any finger down starting in the dynamic thumbstick area should always be
-						-- ignored for camera purposes. these must be handled specially from all other
-						-- inputs, as the DT does not sink inputs by itself
-						dynamicThumbstickInput = input
-						return
-					end
-					
-					if not sunk then
-						incPanInputCount()
-					end
-					
-					-- register the finger
-					touches[input] = sunk
+				if lastPinchDiameter then
+					touchState.Pinch += pinchDiameter - lastPinchDiameter
 				end
 				
-				function touchEnded(input: InputObject, sunk: boolean)
-					assert(input.UserInputType == Enum.UserInputType.Touch)
-					assert(input.UserInputState == Enum.UserInputState.End)
-					
-					-- reset the DT input
-					if input == dynamicThumbstickInput then
-						dynamicThumbstickInput = nil
-					end
-					
-					-- reset pinch state if one unsunk finger lifts
-					if touches[input] == false then
-						lastPinchDiameter = nil
-						decPanInputCount()
-					end
-					
-					-- unregister input
-					touches[input] = nil
-				end
-				
-				function touchChanged(input, sunk)
-					assert(input.UserInputType == Enum.UserInputType.Touch)
-					assert(input.UserInputState == Enum.UserInputState.Change)
-					
-					-- ignore movement from the DT finger
-					if input == dynamicThumbstickInput then
-						return
-					end
-					
-					-- fixup unknown touches
-					if touches[input] == nil then
-						touches[input] = sunk
-					end
-					
-					-- collect unsunk touches
-					local unsunkTouches = {}
-					for touch, sunk in next, touches do
-						if not sunk then
-							table.insert(unsunkTouches, touch)
-						end
-					end
-					
-					-- 1 finger: pan
-					if #unsunkTouches == 1 then
-						if touches[input] == false then
-							local delta = input.Delta
-							-- total touch pan movement (reset at end of frame)
-							touchState.Move += Vector2.new(delta.X, delta.Y)
-						end
-					end
-					
-					-- 2 fingers: pinch
-					if #unsunkTouches == 2 then
-						local pinchDiameter = (unsunkTouches[1].Position - unsunkTouches[2].Position).Magnitude
-						
-						if lastPinchDiameter then
-							touchState.Pinch += pinchDiameter - lastPinchDiameter
-						end
-						
-						lastPinchDiameter = pinchDiameter
-					else
-						lastPinchDiameter = nil
-					end
-				end
-				
-				function resetTouchState()
-					touches = {}
-					dynamicThumbstickInput = nil
-					lastPinchDiameter = nil
-					resetPanInputCount()
-				end
+				lastPinchDiameter = pinchDiameter
+			else
+				lastPinchDiameter = nil
 			end
-			
-			local function pointerAction(wheel, pan, pinch, gpe)
-				if not gpe then
-					mouseState.Wheel = wheel
-					mouseState.Pan = pan
-					mouseState.Pinch = -pinch
-				end
-			end
-			
-			local function inputBegan(input, sunk)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					touchBegan(input, sunk)
-					
-				elseif input.UserInputType == Enum.UserInputType.MouseButton2 and not sunk then
-					incPanInputCount()
-				end
-			end
-			
-			local function inputChanged(input, sunk)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					touchChanged(input, sunk)
-					
-				elseif input.UserInputType == Enum.UserInputType.MouseMovement then
-					mouseMovement(input)
-				end
-			end
-			
-			local function inputEnded(input, sunk)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					touchEnded(input, sunk)
-					
-				elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-					decPanInputCount()
-				end
-			end
-			
-			local inputEnabled = false
-			
-			function CameraInput.setInputEnabled(_inputEnabled)
-				if inputEnabled == _inputEnabled then
-					return
-				end
-				inputEnabled = _inputEnabled
-				
-				resetInputDevices()
-				resetTouchState()
-				
-				if inputEnabled then -- enable
-					ContextActionService:BindActionAtPriority(
-						"RbxCameraThumbstick",
-						thumbstick,
-						false,
-						CAMERA_INPUT_PRIORITY,
-						Enum.KeyCode.Thumbstick2
-					)
-					
-					ContextActionService:BindActionAtPriority(
-						"RbxCameraKeypress",
-						keypress,
-						false,
-						CAMERA_INPUT_PRIORITY,
-						Enum.KeyCode.Left,
-						Enum.KeyCode.Right,
-						Enum.KeyCode.I,
-						Enum.KeyCode.O
-					)
-					
-					ContextActionService:BindAction(
-						"RbxCameraGamepadZoom",
-						gamepadZoomPress,
-						false,
-						Enum.KeyCode.ButtonR3
-					)
-					
-					table.insert(connectionList, UserInputService.InputBegan:Connect(inputBegan))
-					table.insert(connectionList, UserInputService.InputChanged:Connect(inputChanged))
-					table.insert(connectionList, UserInputService.InputEnded:Connect(inputEnded))
-					table.insert(connectionList, UserInputService.PointerAction:Connect(pointerAction))
-					table.insert(connectionList, GuiService.MenuOpened:Connect(resetTouchState))
-					
-				else -- disable
-					ContextActionService:UnbindAction("RbxCameraThumbstick")
-					ContextActionService:UnbindAction("RbxCameraMouseMove")
-					ContextActionService:UnbindAction("RbxCameraMouseWheel")
-					ContextActionService:UnbindAction("RbxCameraKeypress")
-					
-					ContextActionService:UnbindAction("RbxCameraGamepadZoom")
-					
-					for _, conn in next, connectionList do
-						conn:Disconnect()
-					end
-					connectionList = {}
-				end
-			end
-			
-			function CameraInput.getInputEnabled()
-				return inputEnabled
-			end
-			
-			function CameraInput.resetInputForFrameEnd()
-				mouseState.Movement = Vector2.new()
-				touchState.Move = Vector2.new()
-				touchState.Pinch = 0
-				
-				mouseState.Wheel = 0 -- PointerAction
-				mouseState.Pan = Vector2.new() -- PointerAction
-				mouseState.Pinch = 0 -- PointerAction
-			end
-			
-			UserInputService.WindowFocused:Connect(resetInputDevices)
-			UserInputService.WindowFocusReleased:Connect(resetInputDevices)
 		end
+		
+		function resetTouchState()
+			touches = {}
+			dynamicThumbstickInput = nil
+			lastPinchDiameter = nil
+			resetPanInputCount()
+		end
+	end
+	
+	local function pointerAction(wheel, pan, pinch, gpe)
+		if not gpe then
+			mouseState.Wheel = wheel
+			mouseState.Pan = pan
+			mouseState.Pinch = -pinch
+		end
+	end
+	
+	local function inputBegan(input, sunk)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			touchBegan(input, sunk)
+			
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 and not sunk then
+			incPanInputCount()
+		end
+	end
+	
+	local function inputChanged(input, sunk)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			touchChanged(input, sunk)
+			
+		elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+			mouseMovement(input)
+		end
+	end
+	
+	local function inputEnded(input, sunk)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			touchEnded(input, sunk)
+			
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+			decPanInputCount()
+		end
+	end
+	
+	local inputEnabled = false
+	
+	function CameraInput.setInputEnabled(_inputEnabled)
+		if inputEnabled == _inputEnabled then
+			return
+		end
+		inputEnabled = _inputEnabled
+		
+		resetInputDevices()
+		resetTouchState()
+		
+		if inputEnabled then -- enable
+			ContextActionService:BindActionAtPriority(
+				"RbxCameraThumbstick",
+				thumbstick,
+				false,
+				CAMERA_INPUT_PRIORITY,
+				Enum.KeyCode.Thumbstick2
+			)
+			
+			ContextActionService:BindActionAtPriority(
+				"RbxCameraKeypress",
+				keypress,
+				false,
+				CAMERA_INPUT_PRIORITY,
+				Enum.KeyCode.Left,
+				Enum.KeyCode.Right,
+				Enum.KeyCode.I,
+				Enum.KeyCode.O
+			)
+			
+			ContextActionService:BindAction(
+				"RbxCameraGamepadZoom",
+				gamepadZoomPress,
+				false,
+				Enum.KeyCode.ButtonR3
+			)
+			
+			table.insert(connectionList, UserInputService.InputBegan:Connect(inputBegan))
+			table.insert(connectionList, UserInputService.InputChanged:Connect(inputChanged))
+			table.insert(connectionList, UserInputService.InputEnded:Connect(inputEnded))
+			table.insert(connectionList, UserInputService.PointerAction:Connect(pointerAction))
+			table.insert(connectionList, GuiService.MenuOpened:Connect(resetTouchState))
+			
+		else -- disable
+			ContextActionService:UnbindAction("RbxCameraThumbstick")
+			ContextActionService:UnbindAction("RbxCameraMouseMove")
+			ContextActionService:UnbindAction("RbxCameraMouseWheel")
+			ContextActionService:UnbindAction("RbxCameraKeypress")
+			
+			ContextActionService:UnbindAction("RbxCameraGamepadZoom")
+			
+			for _, conn in next, connectionList do
+				conn:Disconnect()
+			end
+			table.clear(connectionList)
+		end
+	end
+	
+	function CameraInput.getInputEnabled()
+		return inputEnabled
+	end
+	
+	function CameraInput.resetInputForFrameEnd()
+		mouseState.Movement = Vector2.zero
+		touchState.Move = Vector2.zero
+		touchState.Pinch = 0
+		
+		mouseState.Wheel = 0 -- PointerAction
+		mouseState.Pan = Vector2.zero -- PointerAction
+		mouseState.Pinch = 0 -- PointerAction
+	end
+	
+	UserInputService.WindowFocused:Connect(resetInputDevices)
+	UserInputService.WindowFocusReleased:Connect(resetInputDevices)
+		
+
+	
+end
+
+
+local MouseLockController = {} do
+	MouseLockController.__index = MouseLockController
+	
+	function MouseLockController.new(cameraModule)
+		local self = setmetatable({}, MouseLockController)
+		
+		self.IsEnabled = true
+		self.IsMouseLocked = false
+		
+		self.MouseLockOffset = Vector3.new(1.75, 0, 0)
+		self.BoundKeys = {
+			Enum.KeyCode.LeftShift,
+			Enum.KeyCode.RightShift
+		}
+		
+		self.CameraModule = cameraModule
+		
+		self.MouseObject = localPlayer:GetMouse()
+		self.LockCursorImage = "rbxasset://textures/MouseLockedCursor.png"
+		self.LastMouseIcon = nil
+		
+		if not UserInputService.TouchEnabled then
+			UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+				if gameProcessedEvent then return end
+				if not self.IsEnabled then return end
+				
+				local key = input.KeyCode
+				for _, switchKey in next, self.BoundKeys do
+					if key == switchKey then
+						self:_OnMouseLockToggled()
+					end
+				end
+			end)
+		end
+		
+		return self
+	end
+	
+	function MouseLockController:_SetMouseIconOverride()
+		local mouse = self.MouseObject
+		self.LastMouseIcon = mouse.Icon
+		mouse.Icon = self.LockCursorImage
+	end
+	
+	function MouseLockController:_RestoreMouseIcon()
+		self.MouseObject.Icon = self.LastMouseIcon
+	end
+	
+	function MouseLockController:_OnMouseLockToggled()
+		self.IsMouseLocked = not self.IsMouseLocked
+		
+		if self.IsMouseLocked then
+			self:_SetMouseIconOverride()
+		else
+			self:_RestoreMouseIcon()
+		end
+	end
+	
+	function MouseLockController:IsMouseLocked(): boolean
+		return self.IsEnabled and self.IsMouseLocked
+	end
+	
+	function MouseLockController:EnableMouseLock(enable: boolean)
+		if enable == self.IsEnabled then return end
+		
+		self.IsEnabled = enable
+		
+		if not self.IsEnabled then
+			self:_RestoreMouseIcon()
+			
+			-- If the mode is disabled while being used, fire the event to toggle it off
+			if self.IsMouseLocked then
+				self.CameraModule:_OnMouseLockToggled()
+			end
+			
+			self.IsMouseLocked = false
+		end
+		
 	end
 	
 end
@@ -1184,10 +1268,6 @@ local BaseCamera = {} do
 	--]]
 	
 	local UNIT_Z = Vector3.new(0, 0, 1)
-	local X1_Y0_Z1 = Vector3.new(1, 0, 1)	--Note: not a unit vector, used for projecting onto XZ plane
-	
-	local DEFAULT_DISTANCE = 12.5	-- Studs
-	local PORTRAIT_DEFAULT_DISTANCE = 25		-- Studs
 	
 	-- Note: DotProduct check in CoordinateFrame::lookAt() prevents using values within about
 	-- 8.11 degrees of the +/- Y axis, that's why these limits are currently 80 degrees
@@ -1214,9 +1294,8 @@ local BaseCamera = {} do
 		
 		self.lastUserPanCamera = tick()
 		
-		-- Subject and position on last update call
-		self.lastSubject = nil
-		self.lastSubjectPosition = Vector3.new(0, 5, 0)
+		-- position on last update call
+		self.lastSubjectPosition = Vector3.zero
 		
 		self.CameraMinZoomDistance = 0
 		self.CameraMaxZoomDistance = 2500
@@ -1225,12 +1304,10 @@ local BaseCamera = {} do
 		-- is trying to maintain, not the actual measured value.
 		-- The default is updated when screen orientation or the min/max distances change,
 		-- to be sure the default is always in range and appropriate for the orientation.
-		self.currentSubjectDistance = math.clamp(DEFAULT_DISTANCE, self.CameraMinZoomDistance, self.CameraMaxZoomDistance)
+		self.currentSubjectDistance = 12.5
 		
-		self.inFirstPerson = false
-		self.inMouseLockedMode = false
+		self.IsFirstPerson = false
 		self.portraitMode = false
-		self.isSmallTouchScreen = false
 		
 		-- Used by modules which want to reset the camera angle on respawn.
 		self.resetCameraAngle = true
@@ -1239,11 +1316,9 @@ local BaseCamera = {} do
 		
 		-- Input Event Connections
 		
-		self.PlayerGui = nil
-		
 		self.gamepadZoomPressConnection = nil
 		
-		
+		self.MouseLockController = MouseLockController.new(self)
 		self.mouseLockOffset = Vector3.zero
 		
 		-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
@@ -1262,25 +1337,6 @@ local BaseCamera = {} do
 	
 	function BaseCamera:OnCharacterAdded(char)
 		self.resetCameraAngle = self.resetCameraAngle or self:GetEnabled()
-		
-		if UserInputService.TouchEnabled then
-			self.PlayerGui = localPlayer:WaitForChild("PlayerGui")
-			for _, child in ipairs(char:GetChildren()) do
-				if child:IsA("Tool") then
-					self.isAToolEquipped = true
-				end
-			end
-			char.ChildAdded:Connect(function(child)
-				if child:IsA("Tool") then
-					self.isAToolEquipped = true
-				end
-			end)
-			char.ChildRemoved:Connect(function(child)
-				if child:IsA("Tool") then
-					self.isAToolEquipped = false
-				end
-			end)
-		end
 	end
 	
 	function BaseCamera:StepZoom()
@@ -1314,8 +1370,8 @@ local BaseCamera = {} do
 		
 		if not cameraSubject then
 			-- cameraSubject is nil
-			-- Note: Previous RootCamera did not have this else case and let self.lastSubject and self.lastSubjectPosition
-			-- both get set to nil in the case of cameraSubject being nil. This function now exits here to preserve the
+			-- Note: Previous RootCamera did not have this else case and let self.lastSubjectPosition
+			-- get set to nil in the case of cameraSubject being nil. This function now exits here to preserve the
 			-- last set valid values for these, as nil values are not handled cases
 			return nil
 		end
@@ -1367,7 +1423,6 @@ local BaseCamera = {} do
 			end
 		end
 		
-		self.lastSubject = cameraSubject
 		self.lastSubjectPosition = result
 		
 		return result
@@ -1376,7 +1431,6 @@ local BaseCamera = {} do
 	function BaseCamera:OnViewportSizeChanged(currentCamera)
 		local size = currentCamera.ViewportSize
 		self.portraitMode = size.X < size.Y
-		self.isSmallTouchScreen = UserInputService.TouchEnabled and (size.Y < 500 or size.X < 700)
 	end
 	
 	function BaseCamera:OnDynamicThumbstickEnabled()
@@ -1449,7 +1503,7 @@ local BaseCamera = {} do
 	
 	function BaseCamera:UpdateMouseBehavior()
 		-- first time transition to first person mode or mouse-locked third person
-		if self.inFirstPerson or self.inMouseLockedMode then
+		if self.IsFirstPerson or self.MouseLockController.IsMouseLocked then
 			CameraUtils.setRotationTypeOverride(Enum.RotationType.CameraRelative)
 			CameraUtils.setMouseBehaviorOverride(Enum.MouseBehavior.LockCenter)
 		else
@@ -1480,12 +1534,12 @@ local BaseCamera = {} do
 		
 		if newSubjectDistance < self.FirstPersonDistanceThreshold then
 			self.currentSubjectDistance = 0.5
-			if not self.inFirstPerson then
+			if not self.IsFirstPerson then
 				self:EnterFirstPerson()
 			end
 		else
 			self.currentSubjectDistance = newSubjectDistance
-			if self.inFirstPerson then
+			if self.IsFirstPerson then
 				self:LeaveFirstPerson()
 			end
 		end
@@ -1498,30 +1552,6 @@ local BaseCamera = {} do
 		
 		-- Returned only for convenience to the caller to know the outcome
 		return self.currentSubjectDistance
-	end
-		
-	function BaseCamera:SetIsMouseLocked(mouseLocked: boolean)
-		self.inMouseLockedMode = mouseLocked
-	end
-	
-	function BaseCamera:GetIsMouseLocked(): boolean
-		return self.inMouseLockedMode
-	end
-	
-	function BaseCamera:SetMouseLockOffset(offsetVector)
-		self.mouseLockOffset = offsetVector
-	end
-	
-	function BaseCamera:GetMouseLockOffset()
-		return self.mouseLockOffset
-	end
-	
-	function BaseCamera:EnterFirstPerson()
-		-- Overridden in ClassicCamera, the only module which supports FirstPerson
-	end
-	
-	function BaseCamera:LeaveFirstPerson()
-		-- Overridden in ClassicCamera, the only module which supports FirstPerson
 	end
 	
 	-- Nominal distance, set by dollying in and out with the mouse wheel or equivalent, not measured distance
@@ -1564,14 +1594,6 @@ local BaseCamera = {} do
 		return nil
 	end
 	
-	function BaseCamera:IsInFirstPerson()
-		return self.inFirstPerson
-	end
-	
-	function BaseCamera:Update(dt)
-		error("BaseCamera:Update() This is a virtual function that should never be getting called.", 2)
-	end
-	
 end
 
 local Poppercam = {} do
@@ -1584,7 +1606,7 @@ local Poppercam = {} do
 	local TransformExtrapolator = {} do
 		TransformExtrapolator.__index = TransformExtrapolator
 		
-		local CF_IDENTITY = CFrame.new()
+		local CF_IDENTITY = CFrame.identity
 		
 		local function cframeToAxis(cframe: CFrame): Vector3
 			local axis: Vector3, angle: number = cframe:ToAxisAngle()
@@ -1772,7 +1794,7 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		self:StepZoom()
 		
 		-- Reset tween speed if user is panning
-		if CameraInput.getRotation() ~= Vector2.new() then
+		if CameraInput.getRotation() ~= Vector2.zero then
 			tweenSpeed = 0
 			self.lastUserPanCamera = tick()
 		end
@@ -1786,11 +1808,11 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 				zoom = 0.5
 			end
 			
-			if self:GetIsMouseLocked() and not self:IsInFirstPerson() then
+			if self.MouseLockController.IsMouseLocked and not self.IsFirstPerson then
 				-- We need to use the right vector of the camera after rotation, not before
 				local newLookCFrame: CFrame = self:CalculateNewLookCFrameFromArg(overrideCameraLookVector, rotateInput)
 				
-				local offset: Vector3 = self:GetMouseLockOffset()
+				local offset = self.MouseLockController.MouseLockOffset
 				local cameraRelativeOffset: Vector3 = offset.X * newLookCFrame.RightVector + offset.Y * newLookCFrame.UpVector + offset.Z * newLookCFrame.LookVector
 				
 				--offset can be NAN, NAN, NAN if newLookVector has only y component
@@ -1815,98 +1837,17 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 	end
 	
 	function ClassicCamera:EnterFirstPerson()
-		self.inFirstPerson = true
+		self.IsFirstPerson = true
 		self:UpdateMouseBehavior()
 	end
 	
 	function ClassicCamera:LeaveFirstPerson()
-		self.inFirstPerson = false
+		self.IsFirstPerson = false
 		self:UpdateMouseBehavior()
 	end
 	
 end
 
-local MouseLockController = {} do
-	MouseLockController.__index = MouseLockController
-	
-	function MouseLockController.new(cameraModule)
-		local self = setmetatable({}, MouseLockController)
-		
-		self.IsEnabled = true
-		self.IsMouseLocked = false
-		
-		self.MouseLockOffset = Vector3.new(1.75, 0, 0)
-		self.BoundKeys = {
-			Enum.KeyCode.LeftShift,
-			Enum.KeyCode.RightShift
-		}
-		
-		self.CameraModule = cameraModule
-		
-		self.MouseObject = localPlayer:GetMouse()
-		self.LockCursorImage = "rbxasset://textures/MouseLockedCursor.png"
-		self.LastMouseIcon = nil
-		
-		UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-			if gameProcessedEvent then return end
-			if not self.IsEnabled then return end
-			
-			local key = input.KeyCode
-			for _, switchKey in next, self.BoundKeys do
-				if key == switchKey then
-					self:_OnMouseLockToggled()
-				end
-			end
-		end)
-		
-		return self
-	end
-	
-	function MouseLockController:_SetMouseIconOverride()
-		local mouse = self.MouseObject
-		self.LastMouseIcon = mouse.Icon
-		mouse.Icon = self.LockCursorImage
-	end
-	
-	function MouseLockController:_RestoreMouseIcon()
-		self.MouseObject.Icon = self.LastMouseIcon
-	end
-	
-	function MouseLockController:_OnMouseLockToggled()
-		self.IsMouseLocked = not self.IsMouseLocked
-		
-		if self.IsMouseLocked then
-			self:_SetMouseIconOverride()
-		else
-			self:_RestoreMouseIcon()
-		end
-		
-		self.CameraModule:OnMouseLockToggled()
-	end
-	
-	function MouseLockController:IsMouseLocked(): boolean
-		return self.IsEnabled and self.IsMouseLocked
-	end
-	
-	function MouseLockController:EnableMouseLock(enable: boolean)
-		if enable == self.IsEnabled then return end
-			
-		self.IsEnabled = enable
-		
-		if not self.IsEnabled then
-			self:_RestoreMouseIcon()
-			
-			-- If the mode is disabled while being used, fire the event to toggle it off
-			if self.IsMouseLocked then
-				self.CameraModule:_OnMouseLockToggled()
-			end
-			
-			self.IsMouseLocked = false
-		end
-		
-	end
-	
-end
 
 local TransparencyController = {} do
 	TransparencyController.__index = TransparencyController
@@ -1925,7 +1866,9 @@ local TransparencyController = {} do
 		self.enabled = false
 		self.lastTransparency = nil
 		
-		self.descendantAddedConn, self.descendantRemovingConn = nil, nil
+		self.descendantAddedConn = nil
+		self.descendantRemovingConn = nil
+		
 		self.toolDescendantAddedConns = {}
 		self.toolDescendantRemovingConns = {}
 		self.cachedParts = {}
@@ -1936,7 +1879,6 @@ local TransparencyController = {} do
 	
 	function TransparencyController:HasToolAncestor(object: Instance)
 		if object.Parent == nil then return false end
-		assert(object.Parent, "")
 		return object.Parent:IsA("Tool") or self:HasToolAncestor(object.Parent)
 	end
 	
@@ -2108,7 +2050,6 @@ local TransparencyController = {} do
 	
 end
 
-
 local CameraModule = {} do
 	CameraModule.__index = CameraModule
 	
@@ -2144,17 +2085,10 @@ local CameraModule = {} do
 		self.IsScriptableModeActive = false
 		self.CameraController = ClassicCamera.new()
 		
-		
 		-- Current active controller instances
 		self.TransparencyController = TransparencyController.new()
 		
-		self.MouseLockController = nil
-		
 		self.TransparencyController:Enable(true)
-		
-		if not UserInputService.TouchEnabled then
-			self.MouseLockController = MouseLockController.new(self)
-		end
 		
 		return self
 	end
@@ -2205,17 +2139,6 @@ local CameraModule = {} do
 		if CameraInput.getInputEnabled() then
 			CameraInput.resetInputForFrameEnd()
 		end
-	end
-	
-	function CameraModule:OnMouseLockToggled()
-		if self.IsScriptableModeActive then return end
-		
-		local controller = self.MouseLockController
-		local isMouseLocked = controller.IsMouseLocked
-		local mouseLockOffset = controller.MouseLockOffset
-		
-		self.CameraController:SetIsMouseLocked(isMouseLocked)
-		self.CameraController:SetMouseLockOffset(mouseLockOffset)
 	end
 	
 end
@@ -2338,8 +2261,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			self:BindContextActions()
 		else
 			ContextActionService:UnbindAction(DYNAMIC_THUMBSTICK_ACTION_NAME)
-			-- Disable
-			self:OnInputEnded() -- Cleanup
+			self:OnInputEnded()
 		end
 		
 		self.enabled = enable
@@ -3489,7 +3411,7 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 		local outerImage = Instance.new("ImageLabel")
 		outerImage.Name = "OuterImage"
 		outerImage.Image = TOUCH_CONTROL_SHEET
-		outerImage.ImageRectOffset = Vector2.new()
+		outerImage.ImageRectOffset = Vector2.zero
 		outerImage.ImageRectSize = Vector2.new(220, 220)
 		outerImage.BackgroundTransparency = 1
 		outerImage.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
