@@ -1,12 +1,4 @@
 
-local userSettings = UserSettings()
-
-local function getFastFlag(name)
-	local success, result = pcall(userSettings.IsUserFeatureEnabled, userSettings, name)
-	return success and result
-end
-
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
@@ -15,7 +7,7 @@ local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 
 local TweenService = game:GetService("TweenService")
-local UserGameSettings = userSettings:GetService("UserGameSettings")
+local UserGameSettings = UserSettings():GetService("UserGameSettings")
 
 local localPlayer = Players.LocalPlayer
 
@@ -102,6 +94,7 @@ local Player = {} do
 	end
 end
 
+--local PLAYER_GUI_WAIT_ASYNCHRONOUS = false
 local LocalPlayerHandler = {} do
 	LocalPlayerHandler.__index = LocalPlayerHandler
 	
@@ -236,7 +229,6 @@ local cameraHandler do
 		
 		function CameraHandler:OnViewportSizeChanged()
 			popper:UpdateProjection(self.FieldOfView, self.ViewportSize)
-			cameraModule:OnViewportSizeChanged(self.ViewportSize)
 		end
 		
 		function CameraHandler:OnNearPlaneZChanged()
@@ -630,50 +622,50 @@ local ZoomController = {} do
 	local ConstrainedSpring = {} do
 		ConstrainedSpring.__index = ConstrainedSpring
 		
-		function ConstrainedSpring.new(freq: number, x: number)
+		function ConstrainedSpring.new(frequency: number, initialPosition: number)
 			return setmetatable({
-				freq = freq, -- Undamped frequency (Hz)
-				x = x, -- Current position
-				v = 0, -- Current velocity
-				minValue = 0, -- Minimum bound
-				maxValue = 0, -- Maximum bound
-				goal = x, -- Goal position
+				Frequency = frequency,
+				Position = initialPosition,
+				Velocity = 0,
+				MinValue = 0,
+				MaxValue = 0,
+				Goal = initialPosition,
 			}, ConstrainedSpring)
 		end
 		
 		function ConstrainedSpring:Step(dt: number)
-			local freq = self.freq :: number * 2 * math.pi -- Convert from Hz to rad/s
-			local x: number = self.x
-			local v: number = self.v
-			local minValue: number = self.minValue
-			local maxValue: number = self.maxValue
-			local goal: number = self.goal
+			local frequency = self.Frequency * 2 * math.pi -- Convert from Hz to rad/s
+			local position = self.Position
+			local velocity = self.Velocity
+			local minValue = self.MinValue
+			local maxValue = self.MaxValue
+			local goal = self.Goal
 			
 			-- Solve the spring ODE for position and velocity after time t, assuming critical damping:
 			--   2*f*x'[t] + x''[t] = f^2*(g - x[t])
 			-- Knowns are x[0] and x'[0].
 			-- Solve for x[t] and x'[t].
 			
-			local offset = goal - x
-			local step = freq * dt
+			local offset = goal - position
+			local step = frequency * dt
 			local decay = math.exp(-step)
 			
-			local x1 = goal + (v * dt - offset * (step + 1)) * decay
-			local v1 = ((offset * freq - v) * step + v) * decay
+			local resultPosition = goal + (velocity * dt - offset * (step + 1)) * decay
+			local resultVelocity = ((offset * frequency - velocity) * step + velocity) * decay
 			
 			-- Constrain
-			if x1 < minValue then
-				x1 = minValue
-				v1 = 0
-			elseif x1 > maxValue then
-				x1 = maxValue
-				v1 = 0
+			if resultPosition < minValue then
+				resultPosition = minValue
+				resultVelocity = 0
+			elseif resultPosition > maxValue then
+				resultPosition = maxValue
+				resultVelocity = 0
 			end
 			
-			self.x = x1
-			self.v = v1
+			self.Position = resultPosition
+			self.Velocity = resultVelocity
 			
-			return x1
+			return resultPosition
 		end
 	end
 	
@@ -692,11 +684,11 @@ local ZoomController = {} do
 	function ZoomController.Update(renderDt: number, focus: CFrame, extrapolation, min, max)
 		local poppedZoom = math.huge
 		
-		if zoomSpring.goal > DIST_OPAQUE then
+		if zoomSpring.Goal > DIST_OPAQUE then
 			-- Make a pessimistic estimate of zoom distance for this step without accounting for poppercam
 			local maxPossibleZoom = math.max(
-				zoomSpring.x,
-				stepTargetZoom(zoomSpring.goal, zoomDelta, min, max)
+				zoomSpring.Position,
+				stepTargetZoom(zoomSpring.Goal, zoomDelta, min, max)
 			)
 			
 			-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
@@ -707,18 +699,14 @@ local ZoomController = {} do
 			) + MIN_FOCUS_DIST
 		end
 		
-		zoomSpring.minValue = MIN_FOCUS_DIST
-		zoomSpring.maxValue = math.min(max, poppedZoom)
+		zoomSpring.MinValue = MIN_FOCUS_DIST
+		zoomSpring.MaxValue = math.min(max, poppedZoom)
 		
 		return zoomSpring:Step(renderDt)
 	end
 	
-	function ZoomController.GetZoomRadius()
-		return zoomSpring.x
-	end
-	
 	function ZoomController.SetZoomParameters(targetZoom, newZoomDelta)
-		zoomSpring.goal = targetZoom
+		zoomSpring.Goal = targetZoom
 		zoomDelta = newZoomDelta
 	end
 	
@@ -781,13 +769,8 @@ local CameraInput = {} do
 	
 	-- Adjust the touch sensitivity so that sensitivity is reduced when swiping up
 	-- or down, but stays the same when swiping towards the middle of the screen
+	local camera = cameraHandler.CameraObject
 	local function adjustTouchPitchSensitivity(delta: Vector2): Vector2
-		local camera = workspace.CurrentCamera
-		
-		if not camera then
-			return delta
-		end
-		
 		-- get the camera pitch in world space
 		local pitch = camera.CFrame:ToEulerAnglesYXZ()
 		
@@ -1171,9 +1154,6 @@ local CameraInput = {} do
 	
 	UserInputService.WindowFocused:Connect(resetInputDevices)
 	UserInputService.WindowFocusReleased:Connect(resetInputDevices)
-		
-
-	
 end
 
 
@@ -1307,7 +1287,6 @@ local BaseCamera = {} do
 		self.currentSubjectDistance = 12.5
 		
 		self.IsFirstPerson = false
-		self.portraitMode = false
 		
 		-- Used by modules which want to reset the camera angle on respawn.
 		self.resetCameraAngle = true
@@ -1336,7 +1315,7 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:OnCharacterAdded(char)
-		self.resetCameraAngle = self.resetCameraAngle or self:GetEnabled()
+		self.resetCameraAngle = self.resetCameraAngle or self.enabled
 	end
 	
 	function BaseCamera:StepZoom()
@@ -1360,8 +1339,6 @@ local BaseCamera = {} do
 			
 			self:SetCameraToSubjectDistance(newZoom)
 		end
-		
-		return ZoomController.GetZoomRadius()
 	end
 	
 	function BaseCamera:GetSubjectPosition(): Vector3?
@@ -1428,11 +1405,6 @@ local BaseCamera = {} do
 		return result
 	end
 	
-	function BaseCamera:OnViewportSizeChanged(currentCamera)
-		local size = currentCamera.ViewportSize
-		self.portraitMode = size.X < size.Y
-	end
-	
 	function BaseCamera:OnDynamicThumbstickEnabled()
 		if UserInputService.TouchEnabled then
 			self.isDynamicThumbstickEnabled = true
@@ -1483,17 +1455,7 @@ local BaseCamera = {} do
 				-- Clean up additional event listeners and reset a bunch of properties
 				self:Cleanup()
 			end
-			
-			self:OnEnable(enable)
 		end
-	end
-	
-	function BaseCamera:OnEnable(enable: boolean)
-		-- for derived camera
-	end
-	
-	function BaseCamera:GetEnabled(): boolean
-		return self.enabled
 	end
 	
 	function BaseCamera:Cleanup()
@@ -2067,17 +2029,6 @@ local CameraModule = {} do
 		2018 PlayerScripts Update - AllYourBlox
 	--]]
 	
-	-- Management of which options appear on the Roblox User Settings screen
-	do
-		local PlayerScripts = localPlayer:WaitForChild("PlayerScripts")
-		
-		PlayerScripts:RegisterTouchCameraMovementMode(Enum.TouchCameraMovementMode.Default)
-		PlayerScripts:RegisterTouchCameraMovementMode(Enum.TouchCameraMovementMode.Classic)
-		
-		PlayerScripts:RegisterComputerCameraMovementMode(Enum.ComputerCameraMovementMode.Default)
-		PlayerScripts:RegisterComputerCameraMovementMode(Enum.ComputerCameraMovementMode.Classic)
-	end
-	
 	
 	function CameraModule.new()
 		local self = setmetatable({}, CameraModule)
@@ -2207,7 +2158,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	local ThumbstickFadeTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 	
 	function DynamicThumbstick.new()
-		local self = setmetatable(BaseCharacterController.new() :: any, DynamicThumbstick)
+		local self = setmetatable(BaseCharacterController.new(), DynamicThumbstick)
 		
 		self.moveTouchObject = nil
 		self.moveTouchLockedIn = false
@@ -2277,17 +2228,17 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function DynamicThumbstick:FadeThumbstick(visible: boolean?)
-		if not visible and self.moveTouchObject then
-			return
-		end
+		if not visible and self.moveTouchObject then return end
 		if self.isFirstTouch then return end
 		
 		if self.startImageFadeTween then
 			self.startImageFadeTween:Cancel()
 		end
+		
 		if self.endImageFadeTween then
 			self.endImageFadeTween:Cancel()
 		end
+		
 		for i = 1, #self.middleImages do
 			if self.middleImageFadeTweens[i] then
 				self.middleImageFadeTweens[i]:Cancel()
@@ -2578,77 +2529,69 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			end
 		end
 		
-		self.thumbstickFrame = Instance.new("Frame")
-		self.thumbstickFrame.BorderSizePixel = 0
-		self.thumbstickFrame.Name = "DynamicThumbstickFrame"
-		self.thumbstickFrame.Visible = false
-		self.thumbstickFrame.BackgroundTransparency = 1.0
-		self.thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		self.thumbstickFrame.Active = false
+		local thumbstickFrame = Instance.new("Frame")
+		thumbstickFrame.BorderSizePixel = 0
+		thumbstickFrame.Name = "DynamicThumbstickFrame"
+		thumbstickFrame.Visible = false
+		thumbstickFrame.BackgroundTransparency = 1.0
+		thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		thumbstickFrame.Active = false
+		self.thumbstickFrame = thumbstickFrame
 		layoutThumbstickFrame(false)
 		
-		self.startImage = Instance.new("ImageLabel")
-		self.startImage.Name = "ThumbstickStart"
-		self.startImage.Visible = true
-		self.startImage.BackgroundTransparency = 1
-		self.startImage.Image = TOUCH_CONTROLS_SHEET
-		self.startImage.ImageRectOffset = Vector2.new(1,1)
-		self.startImage.ImageRectSize = Vector2.new(144, 144)
-		self.startImage.ImageColor3 = Color3.new(0, 0, 0)
-		self.startImage.AnchorPoint = Vector2.new(0.5, 0.5)
-		self.startImage.Position = UDim2.new(0, self.thumbstickRingSize * 3.3, 1, -self.thumbstickRingSize  * 2.8)
-		self.startImage.Size = UDim2.new(0, self.thumbstickRingSize  * 3.7, 0, self.thumbstickRingSize  * 3.7)
-		self.startImage.ZIndex = 10
-		self.startImage.Parent = self.thumbstickFrame
+		local startImage = Instance.new("ImageLabel")
+		startImage.Name = "ThumbstickStart"
+		startImage.Visible = true
+		startImage.BackgroundTransparency = 1
+		startImage.Image = TOUCH_CONTROLS_SHEET
+		startImage.ImageRectOffset = Vector2.new(1,1)
+		startImage.ImageRectSize = Vector2.new(144, 144)
+		startImage.ImageColor3 = Color3.new(0, 0, 0)
+		startImage.AnchorPoint = Vector2.new(0.5, 0.5)
+		startImage.Position = UDim2.new(0, self.thumbstickRingSize * 3.3, 1, -self.thumbstickRingSize * 2.8)
+		startImage.Size = UDim2.new(0, self.thumbstickRingSize * 3.7, 0, self.thumbstickRingSize * 3.7)
+		startImage.ZIndex = 10
+		startImage.Parent = self.thumbstickFrame
+		self.startImage = startImage
 		
-		self.endImage = Instance.new("ImageLabel")
-		self.endImage.Name = "ThumbstickEnd"
-		self.endImage.Visible = true
-		self.endImage.BackgroundTransparency = 1
-		self.endImage.Image = TOUCH_CONTROLS_SHEET
-		self.endImage.ImageRectOffset = Vector2.new(1,1)
-		self.endImage.ImageRectSize =  Vector2.new(144, 144)
-		self.endImage.AnchorPoint = Vector2.new(0.5, 0.5)
-		self.endImage.Position = self.startImage.Position
-		self.endImage.Size = UDim2.new(0, self.thumbstickSize * 0.8, 0, self.thumbstickSize * 0.8)
-		self.endImage.ZIndex = 10
-		self.endImage.Parent = self.thumbstickFrame
+		local endImage = Instance.new("ImageLabel")
+		endImage.Name = "ThumbstickEnd"
+		endImage.Visible = true
+		endImage.BackgroundTransparency = 1
+		endImage.Image = TOUCH_CONTROLS_SHEET
+		endImage.ImageRectOffset = Vector2.new(1,1)
+		endImage.ImageRectSize =  Vector2.new(144, 144)
+		endImage.AnchorPoint = Vector2.new(0.5, 0.5)
+		endImage.Position = self.startImage.Position
+		endImage.Size = UDim2.new(0, self.thumbstickSize * 0.8, 0, self.thumbstickSize * 0.8)
+		endImage.ZIndex = 10
+		endImage.Parent = self.thumbstickFrame
+		self.endImage = endImage
 		
 		for i = 1, NUM_MIDDLE_IMAGES do
-			self.middleImages[i] = Instance.new("ImageLabel")
-			self.middleImages[i].Name = "ThumbstickMiddle"
-			self.middleImages[i].Visible = false
-			self.middleImages[i].BackgroundTransparency = 1
-			self.middleImages[i].Image = TOUCH_CONTROLS_SHEET
-			self.middleImages[i].ImageRectOffset = Vector2.new(1,1)
-			self.middleImages[i].ImageRectSize = Vector2.new(144, 144)
-			self.middleImages[i].ImageTransparency = MIDDLE_TRANSPARENCIES[i]
-			self.middleImages[i].AnchorPoint = Vector2.new(0.5, 0.5)
-			self.middleImages[i].ZIndex = 9
-			self.middleImages[i].Parent = self.thumbstickFrame
+			local image = Instance.new("ImageLabel")
+			image.Name = "ThumbstickMiddle"
+			image.Visible = false
+			image.BackgroundTransparency = 1
+			image.Image = TOUCH_CONTROLS_SHEET
+			image.ImageRectOffset = Vector2.new(1,1)
+			image.ImageRectSize = Vector2.new(144, 144)
+			image.ImageTransparency = MIDDLE_TRANSPARENCIES[i]
+			image.AnchorPoint = Vector2.new(0.5, 0.5)
+			image.ZIndex = 9
+			image.Parent = self.thumbstickFrame
+			self.middleImages[i] = image
 		end
 		
-		local CameraChangedConn: RBXScriptConnection? = nil
-		local function onCurrentCameraChanged()
-			if CameraChangedConn then
-				CameraChangedConn:Disconnect()
-				CameraChangedConn = nil
-			end
-			local newCamera = workspace.CurrentCamera
-			if newCamera then
-				local function onViewportSizeChanged()
-					local size = newCamera.ViewportSize
-					local portraitMode = size.X < size.Y
-					layoutThumbstickFrame(portraitMode)
-				end
-				CameraChangedConn = newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportSizeChanged)
-				onViewportSizeChanged()
-			end
+		local camera = cameraHandler.CameraObject
+		local function onViewportSizeChanged()
+			local size = camera.ViewportSize
+			local portraitMode = size.X < size.Y
+			layoutThumbstickFrame(portraitMode)
 		end
-		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(onCurrentCameraChanged)
-		if workspace.CurrentCamera then
-			onCurrentCameraChanged()
-		end
+		
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportSizeChanged)
+		onViewportSizeChanged()
 		
 		self.moveTouchStartPosition = nil
 		
@@ -2697,11 +2640,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			end
 		end)
 		
-		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-		while not playerGui do
-			localPlayer.ChildAdded:wait()
-			playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-		end
+		local playerGui = localPlayerD.PlayerGui
 		
 		local playerGuiChangedConn = nil
 		local originalScreenOrientationWasLandscape =
@@ -2717,8 +2656,8 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		playerGuiChangedConn = playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(function()
 			if (originalScreenOrientationWasLandscape
 				and playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait)
-				or (not originalScreenOrientationWasLandscape
-					and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
+			or (not originalScreenOrientationWasLandscape
+				and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
 				
 				playerGuiChangedConn:disconnect()
 				longShowBackground()
@@ -3558,7 +3497,7 @@ local ControlModule = {} do
 	-- Roblox User Input Control Modules - each returns a new() constructor function used to create controllers as needed
 	-- Keyboard, Gamepad, DynamicThumbstick, TouchThumbstick
 	
-	local FFlagUserHideControlsWhenMenuOpen = getFastFlag("UserHideControlsWhenMenuOpen")
+	local HideUserControlsWhenMenuOpen = false
 	
 	local CONTROL_ACTION_PRIORITY = Enum.ContextActionPriority.Default.Value
 	
@@ -3615,7 +3554,7 @@ local ControlModule = {} do
 		
 		self.touchControlFrame = nil
 		
-		if FFlagUserHideControlsWhenMenuOpen then
+		if HideUserControlsWhenMenuOpen then
 			GuiService.MenuOpened:Connect(function()
 				if self.touchControlFrame and self.touchControlFrame.Visible then
 					self.touchControlFrame.Visible = false
@@ -3643,7 +3582,6 @@ local ControlModule = {} do
 		end)
 		
 		--[[ Touch Device UI ]]--
-		self.playerGui = nil
 		self.touchGui = nil
 		
 		GuiService:GetPropertyChangedSignal("TouchControlsEnabled"):Connect(function()
@@ -3665,16 +3603,6 @@ local ControlModule = {} do
 		else
 			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
 		end
-	end
-	
-	-- Convenience function so that calling code does not have to first get the activeController
-	-- and then call GetMoveVector on it. When there is no active controller, this function returns the
-	-- zero vector
-	function ControlModule:GetMoveVector(): Vector3
-		if self.activeController then
-			return self.activeController:GetMoveVector()
-		end
-		return Vector3.zero
 	end
 	
 	function ControlModule:GetActiveController()
@@ -3839,7 +3767,7 @@ local ControlModule = {} do
 		if self.activeController and self.activeController.enabled and localPlayerD.Humanoid then
 			
 			-- Now retrieve info from the controller
-			local moveVector = self.activeController:GetMoveVector()
+			local moveVector = self.activeController.moveVector
 			local cameraRelative = self.activeController:IsMoveVectorCameraRelative()
 			
 			if cameraRelative then
