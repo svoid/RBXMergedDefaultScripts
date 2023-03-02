@@ -609,109 +609,120 @@ popper = Popper.new(cameraHandler.CameraObject)
 popper:UpdateProjection(cameraHandler.FieldOfView, cameraHandler.ViewportSize)
 popper:UpdateNearPlaneZ(cameraHandler.NearPlaneZ)
 
-local ZoomController = {} do
-	-- Controls the distance between the focus and the camera.
-	
-	local ZOOM_STIFFNESS = 4.5
-	local ZOOM_DEFAULT = 12.5
-	local ZOOM_ACCELERATION = 0.0375
-	
-	local MIN_FOCUS_DIST = 0.5
-	local DIST_OPAQUE = 1
-	
-	local ConstrainedSpring = {} do
-		ConstrainedSpring.__index = ConstrainedSpring
+local zoomController do
+	local ZoomController = {} do
+		ZoomController.__index = ZoomController
 		
-		function ConstrainedSpring.new(frequency: number, initialPosition: number)
-			return setmetatable({
-				Frequency = frequency,
-				Position = initialPosition,
-				Velocity = 0,
-				MinValue = 0,
-				MaxValue = 0,
-				Goal = initialPosition,
-			}, ConstrainedSpring)
-		end
+		-- Controls the distance between the focus and the camera.
 		
-		function ConstrainedSpring:Step(dt: number)
-			local frequency = self.Frequency * 2 * math.pi -- Convert from Hz to rad/s
-			local position = self.Position
-			local velocity = self.Velocity
-			local minValue = self.MinValue
-			local maxValue = self.MaxValue
-			local goal = self.Goal
+		local ZOOM_STIFFNESS = 4.5
+		local ZOOM_DEFAULT = 12.5
+		local ZOOM_ACCELERATION = 0.0375
+		
+		local MIN_FOCUS_DIST = 0.5
+		local DIST_OPAQUE = 1
+		
+		local ConstrainedSpring = {} do
+			ConstrainedSpring.__index = ConstrainedSpring
 			
-			-- Solve the spring ODE for position and velocity after time t, assuming critical damping:
-			--   2*f*x'[t] + x''[t] = f^2*(g - x[t])
-			-- Knowns are x[0] and x'[0].
-			-- Solve for x[t] and x'[t].
-			
-			local offset = goal - position
-			local step = frequency * dt
-			local decay = math.exp(-step)
-			
-			local resultPosition = goal + (velocity * dt - offset * (step + 1)) * decay
-			local resultVelocity = ((offset * frequency - velocity) * step + velocity) * decay
-			
-			-- Constrain
-			if resultPosition < minValue then
-				resultPosition = minValue
-				resultVelocity = 0
-			elseif resultPosition > maxValue then
-				resultPosition = maxValue
-				resultVelocity = 0
+			function ConstrainedSpring.new(frequency: number, initialPosition: number)
+				return setmetatable({
+					Frequency = frequency,
+					Position = initialPosition,
+					Velocity = 0,
+					MinValue = 0,
+					MaxValue = 0,
+					Goal = initialPosition,
+				}, ConstrainedSpring)
 			end
 			
-			self.Position = resultPosition
-			self.Velocity = resultVelocity
+			function ConstrainedSpring:Step(dt: number)
+				local frequency = self.Frequency * 2 * math.pi -- Convert from Hz to rad/s
+				local position = self.Position
+				local velocity = self.Velocity
+				local minValue = self.MinValue
+				local maxValue = self.MaxValue
+				local goal = self.Goal
+				
+				-- Solve the spring ODE for position and velocity after time t, assuming critical damping:
+				--   2*f*x'[t] + x''[t] = f^2*(g - x[t])
+				-- Knowns are x[0] and x'[0].
+				-- Solve for x[t] and x'[t].
+				
+				local offset = goal - position
+				local step = frequency * dt
+				local decay = math.exp(-step)
+				
+				local resultPosition = goal + (velocity * dt - offset * (step + 1)) * decay
+				local resultVelocity = ((offset * frequency - velocity) * step + velocity) * decay
+				
+				-- Constrain
+				if resultPosition < minValue then
+					resultPosition = minValue
+					resultVelocity = 0
+				elseif resultPosition > maxValue then
+					resultPosition = maxValue
+					resultVelocity = 0
+				end
+				
+				self.Position = resultPosition
+				self.Velocity = resultVelocity
+				
+				return resultPosition
+			end
+		end
+		
+		function ZoomController.new()
+			local self = setmetatable({}, ZoomController)
 			
-			return resultPosition
-		end
-	end
-	
-	local zoomSpring = ConstrainedSpring.new(ZOOM_STIFFNESS, ZOOM_DEFAULT)
-	
-	local function stepTargetZoom(z: number, dz: number, zoomMin: number, zoomMax: number)
-		z = math.clamp(z + dz * (1 + z * ZOOM_ACCELERATION), zoomMin, zoomMax)
-		if z < DIST_OPAQUE then
-			z = dz <= 0 and zoomMin or DIST_OPAQUE
-		end
-		return z
-	end
-	
-	local zoomDelta = 0
-	
-	function ZoomController.Update(renderDt: number, focus: CFrame, extrapolation, min, max)
-		local poppedZoom = math.huge
-		
-		if zoomSpring.Goal > DIST_OPAQUE then
-			-- Make a pessimistic estimate of zoom distance for this step without accounting for poppercam
-			local maxPossibleZoom = math.max(
-				zoomSpring.Position,
-				stepTargetZoom(zoomSpring.Goal, zoomDelta, min, max)
-			)
+			self.ZoomDelta = 0
+			self.ZoomSpring = ConstrainedSpring.new(ZOOM_STIFFNESS, ZOOM_DEFAULT)
 			
-			-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
-			poppedZoom = popper:Run(
-				focus * CFrame.new(0, 0, MIN_FOCUS_DIST),
-				maxPossibleZoom - MIN_FOCUS_DIST,
-				extrapolation
-			) + MIN_FOCUS_DIST
+			return self
 		end
 		
-		zoomSpring.MinValue = MIN_FOCUS_DIST
-		zoomSpring.MaxValue = math.min(max, poppedZoom)
+		local function stepTargetZoom(z, dz, zoomMin, zoomMax)
+			z = math.clamp(z + dz * (1 + z * ZOOM_ACCELERATION), zoomMin, zoomMax)
+			if z < DIST_OPAQUE then
+				z = dz <= 0 and zoomMin or DIST_OPAQUE
+			end
+			return z
+		end
 		
-		return zoomSpring:Step(renderDt)
+		function ZoomController:Update(renderDt: number, focus: CFrame, extrapolation, min, max)
+			local poppedZoom = math.huge
+			
+			local zoomSpring = self.ZoomSpring
+			if zoomSpring.Goal > DIST_OPAQUE then
+				-- Make a pessimistic estimate of zoom distance for this step without accounting for poppercam
+				local maxPossibleZoom = math.max(
+					zoomSpring.Position,
+					stepTargetZoom(zoomSpring.Goal, self.ZoomDelta, min, max)
+				)
+				
+				-- Run the Popper algorithm on the feasible zoom range, [MIN_FOCUS_DIST, maxPossibleZoom]
+				poppedZoom = popper:Run(
+					focus * CFrame.new(0, 0, MIN_FOCUS_DIST),
+					maxPossibleZoom - MIN_FOCUS_DIST,
+					extrapolation
+				) + MIN_FOCUS_DIST
+			end
+			
+			zoomSpring.MinValue = MIN_FOCUS_DIST
+			zoomSpring.MaxValue = math.min(max, poppedZoom)
+			
+			return zoomSpring:Step(renderDt)
+		end
+		
+		function ZoomController:SetZoomParameters(targetZoom, newZoomDelta)
+			self.ZoomSpring.Goal = targetZoom
+			self.ZoomDelta = newZoomDelta
+		end
+		
 	end
 	
-	function ZoomController.SetZoomParameters(targetZoom, newZoomDelta)
-		zoomSpring.Goal = targetZoom
-		zoomDelta = newZoomDelta
-	end
-	
+	zoomController = ZoomController.new()
 end
-
 
 local CameraInput = {} do
 	
@@ -1507,7 +1518,7 @@ local BaseCamera = {} do
 		end
 		
 		-- Pass target distance and zoom direction to the zoom controller
-		ZoomController.SetZoomParameters(
+		zoomController:SetZoomParameters(
 			self.currentSubjectDistance,
 			math.sign(desiredSubjectDistance - lastSubjectDistance)
 		)
@@ -1647,7 +1658,7 @@ local Poppercam = {} do
 			)
 		
 		local extrapolation = self.focusExtrapolator:Step(renderDt, rotatedFocus)
-		local zoom = ZoomController.Update(renderDt, rotatedFocus, extrapolation, min, max)
+		local zoom = zoomController:Update(renderDt, rotatedFocus, extrapolation, min, max)
 		
 		return rotatedFocus * CFrame.new(0, 0, zoom), desiredCameraFocus
 	end
