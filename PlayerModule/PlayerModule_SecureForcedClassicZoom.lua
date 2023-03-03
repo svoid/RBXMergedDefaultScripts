@@ -741,27 +741,6 @@ local CameraInput = {} do
 	
 	local MIN_TOUCH_SENSITIVITY_FRACTION = 0.25 -- 25% sensitivity at 90°
 	
-	-- right mouse button up & down events
-	local rmbDown, rmbUp do
-		local rmbDownBindable = Instance.new("BindableEvent")
-		local rmbUpBindable = Instance.new("BindableEvent")
-		
-		rmbDown = rmbDownBindable.Event
-		rmbUp = rmbUpBindable.Event
-		
-		UserInputService.InputBegan:Connect(function(input, gpe)
-			if not gpe and input.UserInputType == Enum.UserInputType.MouseButton2 then
-				rmbDownBindable:Fire()
-			end
-		end)
-		
-		UserInputService.InputEnded:Connect(function(input, gpe)
-			if input.UserInputType == Enum.UserInputType.MouseButton2 then
-				rmbUpBindable:Fire()
-			end
-		end)
-	end
-	
 	local thumbstickCurve do
 		local K_CURVATURE = 2 -- amount of upwards curvature (0 is flat)
 		local K_DEADZONE = 0.1 -- deadzone
@@ -2168,7 +2147,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	local FADE_IN_OUT_BALANCE_DEFAULT = 0.5
 	local ThumbstickFadeTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 	
-	function DynamicThumbstick.new()
+	function DynamicThumbstick.new(_, touchControlFrame)
 		local self = setmetatable(BaseCharacterController.new(), DynamicThumbstick)
 		
 		self.moveTouchObject = nil
@@ -2188,8 +2167,6 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		
 		self.thumbstickFrame = nil
 		
-		self.onRenderSteppedConn = nil
-		
 		self.fadeInAndOutBalance = FADE_IN_OUT_BALANCE_DEFAULT
 		self.fadeInAndOutHalfDuration = FADE_IN_OUT_HALF_DURATION_DEFAULT
 		self.hasFadedBackgroundInPortrait = false
@@ -2197,6 +2174,188 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		
 		self.tweenInAlphaStart = nil
 		self.tweenOutAlphaStart = nil
+		
+		do
+			self.thumbstickSize = 45
+			self.thumbstickRingSize = 20
+			self.middleSize = 10
+			self.middleSpacing = self.middleSize + 4
+			self.radiusOfDeadZone = 2
+			self.radiusOfMaxSpeed = 20
+			
+			local screenSize = touchControlFrame.AbsoluteSize
+			local isBigScreen = math.min(screenSize.X, screenSize.Y) > 500
+			if isBigScreen then
+				self.thumbstickSize *= 2
+				self.thumbstickRingSize *= 2
+				self.middleSize *= 2
+				self.middleSpacing *= 2
+				self.radiusOfDeadZone *= 2
+				self.radiusOfMaxSpeed *= 2
+			end
+			
+			local function layoutThumbstickFrame(portraitMode)
+				if portraitMode then
+					self.thumbstickFrame.Size = UDim2.new(1, 0, 0.4, 0)
+					self.thumbstickFrame.Position = UDim2.new(0, 0, 0.6, 0)
+				else
+					self.thumbstickFrame.Size = UDim2.new(0.4, 0, 2/3, 0)
+					self.thumbstickFrame.Position = UDim2.new(0, 0, 1/3, 0)
+				end
+			end
+			
+			local thumbstickFrame = Instance.new("Frame")
+			thumbstickFrame.BorderSizePixel = 0
+			thumbstickFrame.Name = "DynamicThumbstickFrame"
+			thumbstickFrame.Visible = false
+			thumbstickFrame.BackgroundTransparency = 1.0
+			thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+			thumbstickFrame.Active = false
+			self.thumbstickFrame = thumbstickFrame
+			layoutThumbstickFrame(false)
+			
+			local startImage = Instance.new("ImageLabel")
+			startImage.Name = "ThumbstickStart"
+			startImage.Visible = true
+			startImage.BackgroundTransparency = 1
+			startImage.Image = TOUCH_CONTROLS_SHEET
+			startImage.ImageRectOffset = Vector2.new(1,1)
+			startImage.ImageRectSize = Vector2.new(144, 144)
+			startImage.ImageColor3 = Color3.new(0, 0, 0)
+			startImage.AnchorPoint = Vector2.new(0.5, 0.5)
+			startImage.Position = UDim2.new(0, self.thumbstickRingSize * 3.3, 1, -self.thumbstickRingSize * 2.8)
+			startImage.Size = UDim2.new(0, self.thumbstickRingSize * 3.7, 0, self.thumbstickRingSize * 3.7)
+			startImage.ZIndex = 10
+			startImage.Parent = self.thumbstickFrame
+			self.startImage = startImage
+			
+			local endImage = Instance.new("ImageLabel")
+			endImage.Name = "ThumbstickEnd"
+			endImage.Visible = true
+			endImage.BackgroundTransparency = 1
+			endImage.Image = TOUCH_CONTROLS_SHEET
+			endImage.ImageRectOffset = Vector2.new(1,1)
+			endImage.ImageRectSize =  Vector2.new(144, 144)
+			endImage.AnchorPoint = Vector2.new(0.5, 0.5)
+			endImage.Position = self.startImage.Position
+			endImage.Size = UDim2.new(0, self.thumbstickSize * 0.8, 0, self.thumbstickSize * 0.8)
+			endImage.ZIndex = 10
+			endImage.Parent = self.thumbstickFrame
+			self.endImage = endImage
+			
+			for i = 1, NUM_MIDDLE_IMAGES do
+				local image = Instance.new("ImageLabel")
+				image.Name = "ThumbstickMiddle"
+				image.Visible = false
+				image.BackgroundTransparency = 1
+				image.Image = TOUCH_CONTROLS_SHEET
+				image.ImageRectOffset = Vector2.new(1,1)
+				image.ImageRectSize = Vector2.new(144, 144)
+				image.ImageTransparency = MIDDLE_TRANSPARENCIES[i]
+				image.AnchorPoint = Vector2.new(0.5, 0.5)
+				image.ZIndex = 9
+				image.Parent = self.thumbstickFrame
+				self.middleImages[i] = image
+			end
+			
+			local camera = cameraHandler.CameraObject
+			local function onViewportSizeChanged()
+				local size = camera.ViewportSize
+				local portraitMode = size.X < size.Y
+				layoutThumbstickFrame(portraitMode)
+			end
+			
+			camera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportSizeChanged)
+			onViewportSizeChanged()
+			
+			self.moveTouchStartPosition = nil
+			
+			self.startImageFadeTween = nil
+			self.endImageFadeTween = nil
+			self.middleImageFadeTweens = {}
+			
+			RunService.RenderStepped:Connect(function()
+				if self.tweenInAlphaStart ~= nil then
+					local delta = tick() - self.tweenInAlphaStart
+					
+					local fadeInTime = (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
+					
+					self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+						* math.min(delta / fadeInTime, 1)
+					
+					if delta > fadeInTime then
+						self.tweenOutAlphaStart = tick()
+						self.tweenInAlphaStart = nil
+					end
+					
+				elseif self.tweenOutAlphaStart ~= nil then
+					local delta = tick() - self.tweenOutAlphaStart
+					
+					local fadeOutTime = (self.fadeInAndOutHalfDuration * 2)
+						- (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
+					
+					self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+						+ FADE_IN_OUT_MAX_ALPHA * math.min(delta / fadeOutTime, 1)
+					
+					if delta > fadeOutTime  then
+						self.tweenOutAlphaStart = nil
+					end
+				end
+			end)
+			
+			UserInputService.TouchEnded:Connect(function(inputObject: InputObject)
+				if inputObject == self.moveTouchObject then
+					self:OnInputEnded()
+				end
+			end)
+			
+			GuiService.MenuOpened:Connect(function()
+				if self.moveTouchObject then
+					self:OnInputEnded()
+				end
+			end)
+			
+			local playerGui = localPlayerD.PlayerGui
+			
+			local originalScreenOrientationWasLandscape =
+				playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft
+				or playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight
+			
+			local function longShowBackground()
+				self.fadeInAndOutHalfDuration = 2.5
+				self.fadeInAndOutBalance = 0.05
+				self.tweenInAlphaStart = tick()
+			end
+			
+			local playerGuiChangedConn = nil
+			playerGuiChangedConn = playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(function()
+				if (originalScreenOrientationWasLandscape
+					and playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait)
+					or (not originalScreenOrientationWasLandscape
+						and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
+					
+					playerGuiChangedConn:Disconnect()
+					longShowBackground()
+					
+					if originalScreenOrientationWasLandscape then
+						self.hasFadedBackgroundInPortrait = true
+					else
+						self.hasFadedBackgroundInLandscape = true
+					end
+				end
+			end)
+			
+			self.thumbstickFrame.Parent = touchControlFrame
+			
+			if game:IsLoaded() then
+				longShowBackground()
+			else
+				coroutine.wrap(function()
+					game.Loaded:Wait()
+					longShowBackground()
+				end)()
+			end
+		end
 		
 		return self
 	end
@@ -2209,17 +2368,10 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		return wasJumping
 	end
 	
-	function DynamicThumbstick:Enable(enable: boolean?, uiParentFrame): boolean?
-		if enable == nil then return false end			-- If nil, return false (invalid argument)
-		enable = enable and true or false				-- Force anything non-nil to boolean before comparison
-		if self.enabled == enable then return true end	-- If no state change, return true indicating already in requested state
+	function DynamicThumbstick:Enable(enable, uiParentFrame)
+		if self.enabled == enable then return end
 		
 		if enable then
-			-- Enable
-			if not self.thumbstickFrame then
-				self:Create(uiParentFrame)
-			end
-			
 			self:BindContextActions()
 		else
 			ContextActionService:UnbindAction(DYNAMIC_THUMBSTICK_ACTION_NAME)
@@ -2228,7 +2380,6 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		
 		self.enabled = enable
 		self.thumbstickFrame.Visible = enable
-		return nil
 	end
 	
 	-- Was called OnMoveTouchEnded in previous version
@@ -2502,197 +2653,6 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			Enum.UserInputType.Touch)
 	end
 	
-	function DynamicThumbstick:Create(parentFrame: GuiBase2d)
-		if self.thumbstickFrame then
-			self.thumbstickFrame:Destroy()
-			self.thumbstickFrame = nil
-			if self.onRenderSteppedConn then
-				self.onRenderSteppedConn:Disconnect()
-				self.onRenderSteppedConn = nil
-			end
-		end
-		
-		self.thumbstickSize = 45
-		self.thumbstickRingSize = 20
-		self.middleSize = 10
-		self.middleSpacing = self.middleSize + 4
-		self.radiusOfDeadZone = 2
-		self.radiusOfMaxSpeed = 20
-		
-		local screenSize = parentFrame.AbsoluteSize
-		local isBigScreen = math.min(screenSize.X, screenSize.Y) > 500
-		if isBigScreen then
-			self.thumbstickSize *= 2
-			self.thumbstickRingSize *= 2
-			self.middleSize *= 2
-			self.middleSpacing *= 2
-			self.radiusOfDeadZone *= 2
-			self.radiusOfMaxSpeed *= 2
-		end
-		
-		local function layoutThumbstickFrame(portraitMode)
-			if portraitMode then
-				self.thumbstickFrame.Size = UDim2.new(1, 0, 0.4, 0)
-				self.thumbstickFrame.Position = UDim2.new(0, 0, 0.6, 0)
-			else
-				self.thumbstickFrame.Size = UDim2.new(0.4, 0, 2/3, 0)
-				self.thumbstickFrame.Position = UDim2.new(0, 0, 1/3, 0)
-			end
-		end
-		
-		local thumbstickFrame = Instance.new("Frame")
-		thumbstickFrame.BorderSizePixel = 0
-		thumbstickFrame.Name = "DynamicThumbstickFrame"
-		thumbstickFrame.Visible = false
-		thumbstickFrame.BackgroundTransparency = 1.0
-		thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		thumbstickFrame.Active = false
-		self.thumbstickFrame = thumbstickFrame
-		layoutThumbstickFrame(false)
-		
-		local startImage = Instance.new("ImageLabel")
-		startImage.Name = "ThumbstickStart"
-		startImage.Visible = true
-		startImage.BackgroundTransparency = 1
-		startImage.Image = TOUCH_CONTROLS_SHEET
-		startImage.ImageRectOffset = Vector2.new(1,1)
-		startImage.ImageRectSize = Vector2.new(144, 144)
-		startImage.ImageColor3 = Color3.new(0, 0, 0)
-		startImage.AnchorPoint = Vector2.new(0.5, 0.5)
-		startImage.Position = UDim2.new(0, self.thumbstickRingSize * 3.3, 1, -self.thumbstickRingSize * 2.8)
-		startImage.Size = UDim2.new(0, self.thumbstickRingSize * 3.7, 0, self.thumbstickRingSize * 3.7)
-		startImage.ZIndex = 10
-		startImage.Parent = self.thumbstickFrame
-		self.startImage = startImage
-		
-		local endImage = Instance.new("ImageLabel")
-		endImage.Name = "ThumbstickEnd"
-		endImage.Visible = true
-		endImage.BackgroundTransparency = 1
-		endImage.Image = TOUCH_CONTROLS_SHEET
-		endImage.ImageRectOffset = Vector2.new(1,1)
-		endImage.ImageRectSize =  Vector2.new(144, 144)
-		endImage.AnchorPoint = Vector2.new(0.5, 0.5)
-		endImage.Position = self.startImage.Position
-		endImage.Size = UDim2.new(0, self.thumbstickSize * 0.8, 0, self.thumbstickSize * 0.8)
-		endImage.ZIndex = 10
-		endImage.Parent = self.thumbstickFrame
-		self.endImage = endImage
-		
-		for i = 1, NUM_MIDDLE_IMAGES do
-			local image = Instance.new("ImageLabel")
-			image.Name = "ThumbstickMiddle"
-			image.Visible = false
-			image.BackgroundTransparency = 1
-			image.Image = TOUCH_CONTROLS_SHEET
-			image.ImageRectOffset = Vector2.new(1,1)
-			image.ImageRectSize = Vector2.new(144, 144)
-			image.ImageTransparency = MIDDLE_TRANSPARENCIES[i]
-			image.AnchorPoint = Vector2.new(0.5, 0.5)
-			image.ZIndex = 9
-			image.Parent = self.thumbstickFrame
-			self.middleImages[i] = image
-		end
-		
-		local camera = cameraHandler.CameraObject
-		local function onViewportSizeChanged()
-			local size = camera.ViewportSize
-			local portraitMode = size.X < size.Y
-			layoutThumbstickFrame(portraitMode)
-		end
-		
-		camera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportSizeChanged)
-		onViewportSizeChanged()
-		
-		self.moveTouchStartPosition = nil
-		
-		self.startImageFadeTween = nil
-		self.endImageFadeTween = nil
-		self.middleImageFadeTweens = {}
-		
-		self.onRenderSteppedConn = RunService.RenderStepped:Connect(function()
-			if self.tweenInAlphaStart ~= nil then
-				local delta = tick() - self.tweenInAlphaStart
-				
-				local fadeInTime = (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-				
-				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
-					* math.min(delta / fadeInTime, 1)
-				
-				if delta > fadeInTime then
-					self.tweenOutAlphaStart = tick()
-					self.tweenInAlphaStart = nil
-				end
-				
-			elseif self.tweenOutAlphaStart ~= nil then
-				local delta = tick() - self.tweenOutAlphaStart
-				
-				local fadeOutTime = (self.fadeInAndOutHalfDuration * 2)
-				- (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-				
-				self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
-					+ FADE_IN_OUT_MAX_ALPHA * math.min(delta / fadeOutTime, 1)
-				
-				if delta > fadeOutTime  then
-					self.tweenOutAlphaStart = nil
-				end
-			end
-		end)
-		
-		self.onTouchEndedConn = UserInputService.TouchEnded:Connect(function(inputObject: InputObject)
-			if inputObject == self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		GuiService.MenuOpened:Connect(function()
-			if self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		local playerGui = localPlayerD.PlayerGui
-		
-		local playerGuiChangedConn = nil
-		local originalScreenOrientationWasLandscape =
-			playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeLeft
-			or playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.LandscapeRight
-		
-		local function longShowBackground()
-			self.fadeInAndOutHalfDuration = 2.5
-			self.fadeInAndOutBalance = 0.05
-			self.tweenInAlphaStart = tick()
-		end
-		
-		playerGuiChangedConn = playerGui:GetPropertyChangedSignal("CurrentScreenOrientation"):Connect(function()
-			if (originalScreenOrientationWasLandscape
-				and playerGui.CurrentScreenOrientation == Enum.ScreenOrientation.Portrait)
-			or (not originalScreenOrientationWasLandscape
-				and playerGui.CurrentScreenOrientation ~= Enum.ScreenOrientation.Portrait) then
-				
-				playerGuiChangedConn:disconnect()
-				longShowBackground()
-				
-				if originalScreenOrientationWasLandscape then
-					self.hasFadedBackgroundInPortrait = true
-				else
-					self.hasFadedBackgroundInLandscape = true
-				end
-			end
-		end)
-		
-		self.thumbstickFrame.Parent = parentFrame
-		
-		if game:IsLoaded() then
-			longShowBackground()
-		else
-			coroutine.wrap(function()
-				game.Loaded:Wait()
-				longShowBackground()
-			end)()
-		end
-	end
-	
 end
 
 local Keyboard = setmetatable({}, BaseCharacterController) do
@@ -2724,16 +2684,8 @@ local Keyboard = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function Keyboard:Enable(enable: boolean)
-		if not UserInputService.KeyboardEnabled then
-			return false
-		end
-		
-		if enable == self.enabled then
-			-- Module is already in the state being requested. True is returned here since the module will be in the state
-			-- expected by the code that follows the Enable() call. This makes more sense than returning false to indicate
-			-- no action was necessary. False indicates failure to be in requested/expected state.
-			return true
-		end
+		if not UserInputService.KeyboardEnabled then return end
+		if enable == self.enabled then return end
 		
 		self.forwardValue  = 0
 		self.backwardValue = 0
@@ -2752,7 +2704,6 @@ local Keyboard = setmetatable({}, BaseCharacterController) do
 		end
 		
 		self.enabled = enable
-		return true
 	end
 	
 	function Keyboard:UpdateMovement(inputState)
@@ -2895,16 +2846,8 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function Gamepad:Enable(enable: boolean): boolean
-		if not UserInputService.GamepadEnabled then
-			return false
-		end
-		
-		if enable == self.enabled then
-			-- Module is already in the state being requested. True is returned here since the module will be in the state
-			-- expected by the code that follows the Enable() call. This makes more sense than returning false to indicate
-			-- no action was necessary. False indicates failure to be in requested/expected state.
-			return true
-		end
+		if not UserInputService.GamepadEnabled then return end
+		if enable == self.enabled then return end
 		
 		self.forwardValue  = 0
 		self.backwardValue = 0
@@ -2915,13 +2858,12 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 		
 		if enable then
 			self.activeGamepad = self:GetHighestPriorityGamepad()
-			if self.activeGamepad ~= NONE then
-				self:BindContextActions()
-				self:ConnectGamepadConnectionListeners()
-			else
-				-- No connected gamepads, failure to enable
-				return false
-			end
+			
+			-- No connected gamepads, failure to enable
+			if self.activeGamepad == NONE then return end
+			
+			self:BindContextActions()
+			self:ConnectGamepadConnectionListeners()
 		else
 			self:UnbindContextActions()
 			self:DisconnectGamepadConnectionListeners()
@@ -2929,7 +2871,6 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 		end
 		
 		self.enabled = enable
-		return true
 	end
 	
 	-- This function selects the lowest number gamepad from the currently-connected gamepad
@@ -3270,8 +3211,8 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 	
 	local TOUCH_CONTROL_SHEET = "rbxasset://textures/ui/TouchControlsSheet.png"
 	
-	function TouchThumbstick.new()
-		local self = setmetatable(BaseCharacterController.new() :: any, TouchThumbstick)
+	function TouchThumbstick.new(_, touchControlFrame)
+		local self = setmetatable(BaseCharacterController.new(), TouchThumbstick)
 		
 		self.isFollowStick = false
 		
@@ -3283,16 +3224,156 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 		self.stickImage = nil
 		self.thumbstickSize = nil -- Float
 		
+		do
+			local minAxis = math.min(touchControlFrame.AbsoluteSize.X, touchControlFrame.AbsoluteSize.Y)
+			local isSmallScreen = minAxis <= 500
+			self.thumbstickSize = isSmallScreen and 70 or 120
+			self.screenPos = isSmallScreen
+				and UDim2.new(0, (self.thumbstickSize / 2) - 10, 1, -self.thumbstickSize - 20)
+				or UDim2.new(0, self.thumbstickSize / 2, 1, -self.thumbstickSize * 1.75)
+			
+			local thumbstickFrame = Instance.new("Frame")
+			thumbstickFrame.Name = "ThumbstickFrame"
+			thumbstickFrame.Active = true
+			thumbstickFrame.Visible = false
+			thumbstickFrame.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
+			thumbstickFrame.Position = self.screenPos
+			thumbstickFrame.BackgroundTransparency = 1
+			self.thumbstickFrame = thumbstickFrame
+			
+			local outerImage = Instance.new("ImageLabel")
+			outerImage.Name = "OuterImage"
+			outerImage.Image = TOUCH_CONTROL_SHEET
+			outerImage.ImageRectOffset = Vector2.zero
+			outerImage.ImageRectSize = Vector2.new(220, 220)
+			outerImage.BackgroundTransparency = 1
+			outerImage.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
+			outerImage.Position = UDim2.new(0, 0, 0, 0)
+			outerImage.Parent = thumbstickFrame
+			
+			local stickImage = Instance.new("ImageLabel")
+			stickImage.Name = "StickImage"
+			stickImage.Image = TOUCH_CONTROL_SHEET
+			stickImage.ImageRectOffset = Vector2.new(220, 0)
+			stickImage.ImageRectSize = Vector2.new(111, 111)
+			stickImage.BackgroundTransparency = 1
+			stickImage.Size = UDim2.new(0, self.thumbstickSize / 2, 0, self.thumbstickSize / 2)
+			stickImage.Position = UDim2.new(
+				0,
+				self.thumbstickSize / 2 - self.thumbstickSize / 4,
+				0,
+				self.thumbstickSize / 2 - self.thumbstickSize / 4
+			)
+			stickImage.ZIndex = 2
+			stickImage.Parent = thumbstickFrame
+			self.stickImage = stickImage
+			
+			local centerPosition = nil
+			local deadZone = 0.05
+			
+			local function DoMove(direction: Vector2)
+				
+				local currentMoveVector = direction / (self.thumbstickSize/2)
+				
+				-- Scaled Radial Dead Zone
+				local inputAxisMagnitude = currentMoveVector.magnitude
+				if inputAxisMagnitude < deadZone then
+					currentMoveVector = Vector3.zero
+				else
+					currentMoveVector = currentMoveVector.unit * ((inputAxisMagnitude - deadZone) / (1 - deadZone))
+					-- NOTE: Making currentMoveVector a unit vector will cause the player to instantly go max speed
+					-- must check for zero length vector is using unit
+					currentMoveVector = Vector3.new(currentMoveVector.X, 0, currentMoveVector.Y)
+				end
+				
+				self.moveVector = currentMoveVector
+			end
+			
+			local function MoveStick(pos: Vector3)
+				local relativePosition = Vector2.new(pos.X - centerPosition.X, pos.Y - centerPosition.Y)
+				local length = relativePosition.magnitude
+				local maxLength = thumbstickFrame.AbsoluteSize.X/2
+				if self.isFollowStick and length > maxLength then
+					local offset = relativePosition.unit * maxLength
+					thumbstickFrame.Position = UDim2.new(
+						0, pos.X - thumbstickFrame.AbsoluteSize.X/2 - offset.X,
+						0, pos.Y - thumbstickFrame.AbsoluteSize.Y/2 - offset.Y)
+				else
+					length = math.min(length, maxLength)
+					relativePosition = relativePosition.unit * length
+				end
+				self.stickImage.Position = UDim2.new(
+					0,
+					relativePosition.X + self.stickImage.AbsoluteSize.X / 2,
+					0,
+					relativePosition.Y + self.stickImage.AbsoluteSize.Y / 2
+				)
+			end
+			
+			-- input connections
+			thumbstickFrame.InputBegan:Connect(function(inputObject: InputObject)
+				--A touch that starts elsewhere on the screen will be sent to a frame's InputBegan event
+				--if it moves over the frame. So we check that this is actually a new touch (inputObject.UserInputState ~= Enum.UserInputState.Begin)
+				if self.moveTouchObject or inputObject.UserInputType ~= Enum.UserInputType.Touch
+					or inputObject.UserInputState ~= Enum.UserInputState.Begin then
+					return
+				end
+				
+				self.moveTouchObject = inputObject
+				thumbstickFrame.Position = UDim2.new(
+					0,
+					inputObject.Position.X - thumbstickFrame.Size.X.Offset / 2,
+					0,
+					inputObject.Position.Y - thumbstickFrame.Size.Y.Offset / 2
+				)
+				
+				centerPosition = Vector2.new(
+					thumbstickFrame.AbsolutePosition.X + thumbstickFrame.AbsoluteSize.X / 2,
+					thumbstickFrame.AbsolutePosition.Y + thumbstickFrame.AbsoluteSize.Y / 2
+				)
+				
+				local direction = Vector2.new(
+					inputObject.Position.X - centerPosition.X,
+					inputObject.Position.Y - centerPosition.Y
+				)
+			end)
+			
+			UserInputService.TouchMoved:Connect(
+				function(inputObject: InputObject, isProcessed: boolean)
+					if inputObject == self.moveTouchObject then
+						centerPosition = Vector2.new(
+							thumbstickFrame.AbsolutePosition.X + thumbstickFrame.AbsoluteSize.X / 2,
+							thumbstickFrame.AbsolutePosition.Y + thumbstickFrame.AbsoluteSize.Y / 2
+						)
+						local direction = Vector2.new(
+							inputObject.Position.X - centerPosition.X,
+							inputObject.Position.Y - centerPosition.Y
+						)
+						DoMove(direction)
+						MoveStick(inputObject.Position)
+					end
+				end
+			)
+			
+			UserInputService.TouchEnded:Connect(function(inputObject, isProcessed)
+				if inputObject == self.moveTouchObject then
+					self:OnInputEnded()
+				end
+			end)
+			
+			GuiService.MenuOpened:Connect(function()
+				if self.moveTouchObject then
+					self:OnInputEnded()
+				end
+			end)
+			
+			thumbstickFrame.Parent = touchControlFrame
+		end
+		
 		return self
 	end
 	
-	function TouchThumbstick:Enable(enable: boolean?, uiParentFrame)
-		-- If nil, return false (invalid argument)
-		if enable == nil then return false end
-		
-		-- Force anything non-nil to boolean before comparison
-		enable = enable and true or false
-		
+	function TouchThumbstick:Enable(enable: boolean, uiParentFrame)
 		-- If no state change, return true indicating already in requested state
 		if self.enabled == enable then return true end
 		
@@ -3300,13 +3381,8 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 		self.isJumping = false
 		
 		if enable then
-			-- Enable
-			if not self.thumbstickFrame then
-				self:Create(uiParentFrame)
-			end
 			self.thumbstickFrame.Visible = true
 		else
-			-- Disable
 			self.thumbstickFrame.Visible = false
 			self:OnInputEnded()
 		end
@@ -3330,160 +3406,6 @@ local TouchThumbstick = setmetatable({}, BaseCharacterController) do
 	
 	function TouchThumbstick:Create(parentFrame)
 		
-		if self.thumbstickFrame then
-			self.thumbstickFrame:Destroy()
-			self.thumbstickFrame = nil
-			if self.onTouchMovedConn then
-				self.onTouchMovedConn:Disconnect()
-				self.onTouchMovedConn = nil
-			end
-			if self.onTouchEndedConn then
-				self.onTouchEndedConn:Disconnect()
-				self.onTouchEndedConn = nil
-			end
-		end
-		
-		local minAxis = math.min(parentFrame.AbsoluteSize.X, parentFrame.AbsoluteSize.Y)
-		local isSmallScreen = minAxis <= 500
-		self.thumbstickSize = isSmallScreen and 70 or 120
-		self.screenPos = isSmallScreen
-			and UDim2.new(0, (self.thumbstickSize / 2) - 10, 1, -self.thumbstickSize - 20)
-			or UDim2.new(0, self.thumbstickSize / 2, 1, -self.thumbstickSize * 1.75)
-		
-		self.thumbstickFrame = Instance.new("Frame")
-		self.thumbstickFrame.Name = "ThumbstickFrame"
-		self.thumbstickFrame.Active = true
-		self.thumbstickFrame.Visible = false
-		self.thumbstickFrame.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
-		self.thumbstickFrame.Position = self.screenPos
-		self.thumbstickFrame.BackgroundTransparency = 1
-		
-		local outerImage = Instance.new("ImageLabel")
-		outerImage.Name = "OuterImage"
-		outerImage.Image = TOUCH_CONTROL_SHEET
-		outerImage.ImageRectOffset = Vector2.zero
-		outerImage.ImageRectSize = Vector2.new(220, 220)
-		outerImage.BackgroundTransparency = 1
-		outerImage.Size = UDim2.new(0, self.thumbstickSize, 0, self.thumbstickSize)
-		outerImage.Position = UDim2.new(0, 0, 0, 0)
-		outerImage.Parent = self.thumbstickFrame
-		
-		self.stickImage = Instance.new("ImageLabel")
-		self.stickImage.Name = "StickImage"
-		self.stickImage.Image = TOUCH_CONTROL_SHEET
-		self.stickImage.ImageRectOffset = Vector2.new(220, 0)
-		self.stickImage.ImageRectSize = Vector2.new(111, 111)
-		self.stickImage.BackgroundTransparency = 1
-		self.stickImage.Size = UDim2.new(0, self.thumbstickSize / 2, 0, self.thumbstickSize / 2)
-		self.stickImage.Position = UDim2.new(
-			0,
-			self.thumbstickSize / 2 - self.thumbstickSize / 4,
-			0,
-			self.thumbstickSize / 2 - self.thumbstickSize / 4
-		)
-		self.stickImage.ZIndex = 2
-		self.stickImage.Parent = self.thumbstickFrame
-		
-		local centerPosition = nil
-		local deadZone = 0.05
-		
-		local function DoMove(direction: Vector2)
-			
-			local currentMoveVector = direction / (self.thumbstickSize/2)
-			
-			-- Scaled Radial Dead Zone
-			local inputAxisMagnitude = currentMoveVector.magnitude
-			if inputAxisMagnitude < deadZone then
-				currentMoveVector = Vector3.zero
-			else
-				currentMoveVector = currentMoveVector.unit * ((inputAxisMagnitude - deadZone) / (1 - deadZone))
-				-- NOTE: Making currentMoveVector a unit vector will cause the player to instantly go max speed
-				-- must check for zero length vector is using unit
-				currentMoveVector = Vector3.new(currentMoveVector.X, 0, currentMoveVector.Y)
-			end
-			
-			self.moveVector = currentMoveVector
-		end
-		
-		local function MoveStick(pos: Vector3)
-			local relativePosition = Vector2.new(pos.X - centerPosition.X, pos.Y - centerPosition.Y)
-			local length = relativePosition.magnitude
-			local maxLength = self.thumbstickFrame.AbsoluteSize.X/2
-			if self.isFollowStick and length > maxLength then
-				local offset = relativePosition.unit * maxLength
-				self.thumbstickFrame.Position = UDim2.new(
-					0, pos.X - self.thumbstickFrame.AbsoluteSize.X/2 - offset.X,
-					0, pos.Y - self.thumbstickFrame.AbsoluteSize.Y/2 - offset.Y)
-			else
-				length = math.min(length, maxLength)
-				relativePosition = relativePosition.unit * length
-			end
-			self.stickImage.Position = UDim2.new(
-				0,
-				relativePosition.X + self.stickImage.AbsoluteSize.X / 2,
-				0,
-				relativePosition.Y + self.stickImage.AbsoluteSize.Y / 2
-			)
-		end
-		
-		-- input connections
-		self.thumbstickFrame.InputBegan:Connect(function(inputObject: InputObject)
-			--A touch that starts elsewhere on the screen will be sent to a frame's InputBegan event
-			--if it moves over the frame. So we check that this is actually a new touch (inputObject.UserInputState ~= Enum.UserInputState.Begin)
-			if self.moveTouchObject or inputObject.UserInputType ~= Enum.UserInputType.Touch
-				or inputObject.UserInputState ~= Enum.UserInputState.Begin then
-				return
-			end
-			
-			self.moveTouchObject = inputObject
-			self.thumbstickFrame.Position = UDim2.new(
-				0,
-				inputObject.Position.X - self.thumbstickFrame.Size.X.Offset / 2,
-				0,
-				inputObject.Position.Y - self.thumbstickFrame.Size.Y.Offset / 2
-			)
-			
-			centerPosition = Vector2.new(
-				self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
-				self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
-			)
-			
-			local direction = Vector2.new(
-				inputObject.Position.X - centerPosition.X,
-				inputObject.Position.Y - centerPosition.Y
-			)
-		end)
-		
-		self.onTouchMovedConn = UserInputService.TouchMoved:Connect(
-			function(inputObject: InputObject, isProcessed: boolean)
-				if inputObject == self.moveTouchObject then
-					centerPosition = Vector2.new(
-						self.thumbstickFrame.AbsolutePosition.X + self.thumbstickFrame.AbsoluteSize.X / 2,
-						self.thumbstickFrame.AbsolutePosition.Y + self.thumbstickFrame.AbsoluteSize.Y / 2
-					)
-					local direction = Vector2.new(
-						inputObject.Position.X - centerPosition.X,
-						inputObject.Position.Y - centerPosition.Y
-					)
-					DoMove(direction)
-					MoveStick(inputObject.Position)
-				end
-			end
-		)
-		
-		self.onTouchEndedConn = UserInputService.TouchEnded:Connect(function(inputObject, isProcessed)
-			if inputObject == self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		GuiService.MenuOpened:Connect(function()
-			if self.moveTouchObject then
-				self:OnInputEnded()
-			end
-		end)
-		
-		self.thumbstickFrame.Parent = parentFrame
 	end
 	
 end
@@ -3631,14 +3553,6 @@ local ControlModule = {} do
 			end
 		end
 		
-		local enable = function()
-			if self.touchControlFrame then
-				self.activeController:Enable(true, self.touchControlFrame)
-			else
-				self.activeController:Enable(true)
-			end
-		end
-		
 		-- there is no active controller
 		if not self.activeController then
 			return
@@ -3662,27 +3576,18 @@ local ControlModule = {} do
 		end
 		
 		-- no settings prevent enabling controls
-		enable()
+		self.activeController:Enable(true, self.touchControlFrame)
 	end
 	
-	function ControlModule:Enable(enable: boolean?)
-		if enable == nil then
-			enable = true
-		end
-		
+	function ControlModule:Enable(enable: boolean)
 		self.controlsEnabled = enable
-		
-		if not self.activeController then
-			return
-		end
-		
+		if not self.activeController then return end
 		self:UpdateActiveControlModuleEnabled()
 	end
 	
 	-- For those who prefer distinct functions
 	function ControlModule:Disable()
 		self.controlsEnabled = false
-		
 		self:UpdateActiveControlModuleEnabled()
 	end
 	
@@ -3819,7 +3724,7 @@ local ControlModule = {} do
 		
 		-- first time switching to this control module, should instantiate it
 		if not self.controllers[controlModule] then
-			self.controllers[controlModule] = controlModule.new(CONTROL_ACTION_PRIORITY)
+			self.controllers[controlModule] = controlModule.new(CONTROL_ACTION_PRIORITY, self.touchControlFrame)
 		end
 		
 		-- switch to the new controlModule
@@ -3895,19 +3800,21 @@ local ControlModule = {} do
 		if self.touchGui then self.touchGui:Destroy() end
 		
 		-- Container for all touch device guis
-		self.touchGui = Instance.new("ScreenGui")
-		self.touchGui.Name = "TouchGui"
-		self.touchGui.ResetOnSpawn = false
-		self.touchGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		local touchGui = Instance.new("ScreenGui")
+		touchGui.Name = "TouchGui"
+		touchGui.ResetOnSpawn = false
+		touchGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		self.touchGui = touchGui
 		self:UpdateTouchGuiVisibility()
 		
-		self.touchControlFrame = Instance.new("Frame")
-		self.touchControlFrame.Name = "TouchControlFrame"
-		self.touchControlFrame.Size = UDim2.new(1, 0, 1, 0)
-		self.touchControlFrame.BackgroundTransparency = 1
-		self.touchControlFrame.Parent = self.touchGui
+		local touchControlFrame = Instance.new("Frame")
+		touchControlFrame.Name = "TouchControlFrame"
+		touchControlFrame.Size = UDim2.new(1, 0, 1, 0)
+		touchControlFrame.BackgroundTransparency = 1
+		touchControlFrame.Parent = self.touchGui
+		self.touchControlFrame = touchControlFrame
 		
-		self.touchGui.Parent = assert(localPlayerD.PlayerGui)
+		touchGui.Parent = assert(localPlayerD.PlayerGui)
 	end
 	
 end
