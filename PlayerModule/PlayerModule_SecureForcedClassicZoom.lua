@@ -94,7 +94,6 @@ local Player = {} do
 	end
 end
 
---local PLAYER_GUI_WAIT_ASYNCHRONOUS = false
 local LocalPlayerHandler = {} do
 	LocalPlayerHandler.__index = LocalPlayerHandler
 	
@@ -103,23 +102,7 @@ local LocalPlayerHandler = {} do
 	
 	function LocalPlayerHandler.new(playerObject)
 		local self = setmetatable(Player.new(playerObject), LocalPlayerHandler)
-		
-		self.PlayerGui = nil
-		
-		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-		if playerGui then
-			self.PlayerGui = playerGui
-		else
-			local playerGuiAddedConn
-			playerGuiAddedConn = localPlayer.ChildAdded:Connect(function(child)
-				if child:IsA("PlayerGui") then
-					playerGuiAddedConn:Disconnect()
-					self.PlayerGui = child
-					controlModule:OnPlayerGuiAdded()
-				end
-			end)
-		end
-		
+		self.PlayerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 		return self
 	end
 	
@@ -3522,20 +3505,14 @@ local ControlModule = {} do
 			self:UpdateActiveControlModuleEnabled()
 		end)
 		
-		if localPlayerD.PlayerGui then
-			self:OnPlayerGuiAdded()
-		end
-		
-		return self
-	end
-	
-	function ControlModule:OnPlayerGuiAdded()
 		if UserInputService.TouchEnabled then
 			self:CreateTouchGuiContainer()
 			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
 		else
 			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
 		end
+		
+		return self
 	end
 	
 	function ControlModule:GetActiveController()
