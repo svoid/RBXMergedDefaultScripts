@@ -3895,15 +3895,4 @@ local PlayerModule = {} do
 	
 end
 
---[[
-spawn(function()
-	wait(5)
-	warn("asdaw")
-	cameraInput:SetInputEnabled(false)
-	wait(1)
-	warn("assasdasdaw")
-	cameraInput:SetInputEnabled(true)
-end)
-]]
-
 return PlayerModule.new()
