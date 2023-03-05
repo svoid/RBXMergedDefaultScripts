@@ -7,7 +7,6 @@ local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 
 local TweenService = game:GetService("TweenService")
-local UserGameSettings = UserSettings():GetService("UserGameSettings")
 
 local localPlayer = Players.LocalPlayer
 
@@ -104,6 +103,13 @@ local LocalPlayerHandler = {} do
 	function LocalPlayerHandler.new(playerObject)
 		local self = setmetatable(Player.new(playerObject), LocalPlayerHandler)
 		self.PlayerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		
+		local playerScripts = playerObject.PlayerScripts
+		playerScripts:ClearTouchMovementModes()
+		playerScripts:RegisterTouchMovementMode(Enum.TouchMovementMode.Default)
+		playerScripts:RegisterTouchMovementMode(Enum.TouchMovementMode.DynamicThumbstick)
+		playerScripts:RegisterTouchMovementMode(Enum.TouchMovementMode.Thumbstick)
+		
 		return self
 	end
 	
@@ -236,6 +242,7 @@ local cameraHandler do
 end
 
 local localPlayerD = PlayerHandler.new().LocalPlayer
+local userGameSettingsHandler
 
 local CameraUtils = {} do
 	--[[
@@ -259,24 +266,6 @@ local CameraUtils = {} do
 			UserInputService.MouseBehavior = savedMouseBehavior
 		end
 		lastMouseBehaviorOverride = nil
-	end
-	
-	local savedRotationType: Enum.RotationType = Enum.RotationType.MovementRelative
-	local lastRotationTypeOverride: Enum.RotationType? = nil
-	function CameraUtils.setRotationTypeOverride(value: Enum.RotationType)
-		if UserGameSettings.RotationType ~= lastRotationTypeOverride then
-			savedRotationType = UserGameSettings.RotationType
-		end
-		
-		UserGameSettings.RotationType = value
-		lastRotationTypeOverride = value
-	end
-	
-	function CameraUtils.restoreRotationType()
-		if UserGameSettings.RotationType == lastRotationTypeOverride then
-			UserGameSettings.RotationType = savedRotationType
-		end
-		lastRotationTypeOverride = nil
 	end
 	
 end
@@ -1063,7 +1052,7 @@ local CameraInput = {} do
 	end
 	
 	function CameraInput:GetRotation(disableKeyboardRotation: boolean?): Vector2
-		local inversionVector = Vector2.new(1, UserGameSettings:GetCameraYInvertValue())
+		local inversionVector = Vector2.new(1, userGameSettingsHandler:GetCameraYInvertValue())
 		
 		-- keyboard input is non-coalesced, so must account for time delta
 		local kKeyboard = Vector2.new(keyboardState.Right - keyboardState.Left, 0) * self.WorldTimeDelta
@@ -1290,13 +1279,9 @@ local BaseCamera = {} do
 		-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
 		-- when needed, so the code here may run well after the start of the game
 		
-		UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
-			self:OnGameSettingsTouchMovementModeChanged()
-		end)
-		self:OnGameSettingsTouchMovementModeChanged()
+		self:OnGameSettingsTouchMovementModeChanged(userGameSettingsHandler.TouchMovementMode)
 		
-		UserGameSettings:SetCameraYInvertVisible()
-		UserGameSettings:SetGamepadCameraSensitivityVisible()
+		userGameSettingsHandler:SetCameraTogglableOptionsVisible()
 		
 		return self
 	end
@@ -1402,9 +1387,9 @@ local BaseCamera = {} do
 		self.isDynamicThumbstickEnabled = false
 	end
 	
-	function BaseCamera:OnGameSettingsTouchMovementModeChanged()
-		if (UserGameSettings.TouchMovementMode == Enum.TouchMovementMode.DynamicThumbstick
-			or UserGameSettings.TouchMovementMode == Enum.TouchMovementMode.Default) then
+	function BaseCamera:OnGameSettingsTouchMovementModeChanged(touchMovementMode)
+		if (touchMovementMode == Enum.TouchMovementMode.DynamicThumbstick
+			or touchMovementMode == Enum.TouchMovementMode.Default) then
 			self:OnDynamicThumbstickEnabled()
 		else
 			self:OnDynamicThumbstickDisabled()
@@ -1453,10 +1438,10 @@ local BaseCamera = {} do
 	function BaseCamera:UpdateMouseBehavior()
 		-- first time transition to first person mode or mouse-locked third person
 		if self.IsFirstPerson or self.MouseLockController.IsMouseLocked then
-			CameraUtils.setRotationTypeOverride(Enum.RotationType.CameraRelative)
+			userGameSettingsHandler:SetRotationTypeOverride(Enum.RotationType.CameraRelative)
 			CameraUtils.setMouseBehaviorOverride(Enum.MouseBehavior.LockCenter)
 		else
-			CameraUtils.restoreRotationType()
+			userGameSettingsHandler:RestoreRotationType()
 			CameraUtils.restoreMouseBehavior()
 		end
 	end
@@ -3502,15 +3487,6 @@ local ControlModule = {} do
 			self:OnLastInputTypeChanged(newLastInputType)
 		end)
 		
-		
-		UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
-			self:OnTouchMovementModeChange()
-		end)
-		
-		UserGameSettings:GetPropertyChangedSignal("ComputerMovementMode"):Connect(function()
-			self:OnComputerMovementModeChange()
-		end)
-		
 		--[[ Touch Device UI ]]--
 		self.touchGui = nil
 		
@@ -3628,7 +3604,7 @@ local ControlModule = {} do
 		local DevMovementMode = localPlayer.DevTouchMovementMode
 		
 		if DevMovementMode == Enum.DevTouchMovementMode.UserChoice then
-			touchModule = movementEnumToModuleMap[UserGameSettings.TouchMovementMode]
+			touchModule = movementEnumToModuleMap[userGameSettingsHandler.TouchMovementMode]
 		elseif DevMovementMode == Enum.DevTouchMovementMode.Scriptable then
 			return nil, true
 		else
@@ -3744,18 +3720,12 @@ local ControlModule = {} do
 	end
 	
 	function ControlModule:OnLastInputTypeChanged(newLastInputType)
-		if lastInputType == newLastInputType then
-			warn("LastInputType Change listener called with current type.")
-		end
 		lastInputType = newLastInputType
 		
 		if lastInputType == Enum.UserInputType.Touch then
 			-- TODO: Check if touch module already active
 			local touchModule, success = self:SelectTouchModule()
 			if success then
-				while not self.touchControlFrame do
-					wait()
-				end
 				self:SwitchToController(touchModule)
 			end
 		elseif computerInputTypeToModuleMap[lastInputType] ~= nil then
@@ -3768,21 +3738,9 @@ local ControlModule = {} do
 		self:UpdateTouchGuiVisibility()
 	end
 	
-	-- Called when any relevant values of GameSettings or LocalPlayer change, forcing re-evalulation of
-	-- current control scheme
-	function ControlModule:OnComputerMovementModeChange()
-		local controlModule, success =  self:SelectComputerMovementModule()
-		if success then
-			self:SwitchToController(controlModule)
-		end
-	end
-	
 	function ControlModule:OnTouchMovementModeChange()
 		local touchModule, success = self:SelectTouchModule()
 		if success then
-			while not self.touchControlFrame do
-				wait()
-			end
 			self:SwitchToController(touchModule)
 		end
 	end
@@ -3894,5 +3852,63 @@ local PlayerModule = {} do
 	end
 	
 end
+
+local UserGameSettingsHandler = {} do
+	UserGameSettingsHandler.__index = UserGameSettingsHandler
+	
+	function UserGameSettingsHandler.new()
+		local self = setmetatable({}, UserGameSettingsHandler)
+		
+		local UserGameSettings = UserSettings():GetService("UserGameSettings")
+		
+		self.GameSettingsObject = UserGameSettings
+		self.TouchMovementMode = UserGameSettings.TouchMovementMode
+		
+		self.RotationType = Enum.RotationType.MovementRelative
+		self._SavedRotationType = nil
+		self._LastRotationTypeOverride = nil
+		
+		UserGameSettings:GetPropertyChangedSignal("TouchMovementMode"):Connect(function()
+			self.TouchMovementMode = UserGameSettings.TouchMovementMode
+			self:OnTouchMovementModeChange()
+		end)
+		
+		return self
+	end
+	
+	function UserGameSettingsHandler:OnTouchMovementModeChange()
+		cameraModule.CameraController:OnGameSettingsTouchMovementModeChanged(self.TouchMovementMode)
+		controlModule:OnTouchMovementModeChange()
+	end
+	
+	function UserGameSettingsHandler:SetCameraTogglableOptionsVisible()
+		self.GameSettingsObject:SetCameraYInvertVisible()
+		self.GameSettingsObject:SetGamepadCameraSensitivityVisible()
+	end
+	
+	function UserGameSettingsHandler:SetRotationTypeOverride(value: Enum.RotationType)
+		if self.RotationType ~= self._LastRotationTypeOverride then
+			self._SavedRotationType = self.RotationType
+		end
+		
+		self.RotationType = value
+		self.GameSettingsObject.RotationType = value
+		self._LastRotationTypeOverride = value
+	end
+	
+	function UserGameSettingsHandler:RestoreRotationType()
+		if self.RotationType == self._LastRotationType then
+			self.RotationType = self._SavedRotationType
+			self.GameSettingsObject.RotationType = self.RotationType
+		end
+		self._LastRotationTypeOverride = nil
+	end
+	
+	function UserGameSettingsHandler:GetCameraYInvertValue()
+		return self.GameSettingsObject:GetCameraYInvertValue()
+	end
+end
+
+userGameSettingsHandler = UserGameSettingsHandler.new()
 
 return PlayerModule.new()
