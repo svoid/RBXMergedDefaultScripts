@@ -243,33 +243,7 @@ end
 
 local localPlayerD = PlayerHandler.new().LocalPlayer
 local userGameSettingsHandler
-
-local CameraUtils = {} do
-	--[[
-		CameraUtils - Math utility functions shared by multiple camera scripts
-		2018 Camera Update - AllYourBlox
-	--]]
-	
-	local savedMouseBehavior: Enum.MouseBehavior = Enum.MouseBehavior.Default
-	local lastMouseBehaviorOverride: Enum.MouseBehavior? = nil
-	function CameraUtils.setMouseBehaviorOverride(value: Enum.MouseBehavior)
-		if UserInputService.MouseBehavior ~= lastMouseBehaviorOverride then
-			savedMouseBehavior = UserInputService.MouseBehavior
-		end
-		
-		UserInputService.MouseBehavior = value
-		lastMouseBehaviorOverride = value
-	end
-	
-	function CameraUtils.restoreMouseBehavior()
-		if UserInputService.MouseBehavior == lastMouseBehaviorOverride then
-			UserInputService.MouseBehavior = savedMouseBehavior
-		end
-		lastMouseBehaviorOverride = nil
-	end
-	
-end
-
+local inputHandler
 
 local Popper = {} do
 	Popper.__index = Popper
@@ -1143,7 +1117,7 @@ local MouseLockController = {} do
 		
 		self.IsEnabled = true
 		self.IsMouseLocked = false
-		self.IsAvailable = UserInputService.TouchEnabled == false
+		self.IsAvailable = inputHandler.TouchEnabled == false
 		
 		self.MouseLockOffset = Vector3.new(1.75, 0, 0)
 		self.BoundKeys = {
@@ -1378,7 +1352,7 @@ local BaseCamera = {} do
 	end
 	
 	function BaseCamera:OnDynamicThumbstickEnabled()
-		if UserInputService.TouchEnabled then
+		if inputHandler.TouchEnabled then
 			self.isDynamicThumbstickEnabled = true
 		end
 	end
@@ -1432,17 +1406,17 @@ local BaseCamera = {} do
 	
 	function BaseCamera:Cleanup()
 		-- Unlock mouse for example if right mouse button was being held down
-		CameraUtils.restoreMouseBehavior()
+		inputHandler:RestoreMouseBehavior()
 	end
 	
 	function BaseCamera:UpdateMouseBehavior()
 		-- first time transition to first person mode or mouse-locked third person
 		if self.IsFirstPerson or self.MouseLockController.IsMouseLocked then
 			userGameSettingsHandler:SetRotationTypeOverride(Enum.RotationType.CameraRelative)
-			CameraUtils.setMouseBehaviorOverride(Enum.MouseBehavior.LockCenter)
+			inputHandler:SetMouseBehaviorOverride(Enum.MouseBehavior.LockCenter)
 		else
 			userGameSettingsHandler:RestoreRotationType()
-			CameraUtils.restoreMouseBehavior()
+			inputHandler:RestoreMouseBehavior()
 		end
 	end
 	
@@ -2030,8 +2004,8 @@ local CameraModule = {} do
 		local isScriptable = newCameraType == Enum.CameraType.Scriptable
 		
 		if isScriptable then
-			if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-				CameraUtils.restoreMouseBehavior()
+			if inputHandler.MouseBehavior == Enum.MouseBehavior.LockCenter then
+				inputHandler:RestoreMouseBehavior()
 			end
 		end
 		
@@ -2666,7 +2640,7 @@ local Keyboard = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function Keyboard:Enable(enable: boolean)
-		if not UserInputService.KeyboardEnabled then return end
+		if not inputHandler.KeyboardEnabled then return end
 		if enable == self.enabled then return end
 		
 		self.forwardValue  = 0
@@ -2828,7 +2802,7 @@ local Gamepad = setmetatable({}, BaseCharacterController) do
 	end
 	
 	function Gamepad:Enable(enable: boolean): boolean
-		if not UserInputService.GamepadEnabled then return end
+		if not inputHandler.GamepadEnabled then return end
 		if enable == self.enabled then return end
 		
 		self.forwardValue  = 0
@@ -3495,7 +3469,7 @@ local ControlModule = {} do
 			self:UpdateActiveControlModuleEnabled()
 		end)
 		
-		if UserInputService.TouchEnabled then
+		if inputHandler.TouchEnabled then
 			self:CreateTouchGuiContainer()
 			self:OnLastInputTypeChanged(UserInputService:GetLastInputType())
 		else
@@ -3534,7 +3508,7 @@ local ControlModule = {} do
 		-- GuiService.TouchControlsEnabled == false and the active controller is a touch controller,
 		-- disable controls
 		if not GuiService.TouchControlsEnabled
-			and UserInputService.TouchEnabled
+			and inputHandler.TouchEnabled
 			and (self.activeControlModule == TouchThumbstick
 				or self.activeControlModule == DynamicThumbstick)
 		then
@@ -3561,7 +3535,7 @@ local ControlModule = {} do
 	
 	-- Returns module (possibly nil) and success code to differentiate returning nil due to error vs Scriptable
 	function ControlModule:SelectComputerMovementModule(): ({}?, boolean)
-		if not (UserInputService.KeyboardEnabled or UserInputService.GamepadEnabled) then
+		if not (inputHandler.KeyboardEnabled or inputHandler.GamepadEnabled) then
 			return nil, false
 		end
 		
@@ -3596,7 +3570,7 @@ local ControlModule = {} do
 	-- Choose current Touch control module based on settings (user, dev)
 	-- Returns module (possibly nil) and success code to differentiate returning nil due to error vs Scriptable
 	function ControlModule:SelectTouchModule(): ({}?, boolean)
-		if not UserInputService.TouchEnabled then
+		if not inputHandler.TouchEnabled then
 			return nil, false
 		end
 		
@@ -3775,6 +3749,14 @@ local InputHandler = {} do
 	function InputHandler.new()
 		local self = setmetatable({}, InputHandler)
 		
+		self.TouchEnabled = UserInputService.TouchEnabled
+		self.KeyboardEnabled = UserInputService.KeyboardEnabled
+		self.GamepadEnabled = UserInputService.GamepadEnabled
+		
+		self.MouseBehavior = UserInputService.MouseBehavior
+		self._SavedMouseBehavior = Enum.MouseBehavior.Default
+		self._LastMouseBehaviorOverride = nil
+		
 		UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 			self:OnInputBegan(input, gameProcessedEvent)
 		end)
@@ -3820,9 +3802,29 @@ local InputHandler = {} do
 	function InputHandler:OnWindowFocusReleased()
 		cameraInput:OnWindowFocusReleased()
 	end
+	
+	function InputHandler:SetMouseBehaviorOverride(value: Enum.MouseBehavior)
+		if self.MouseBehavior ~= self._LastMouseBehaviorOverride then
+			self._SavedMouseBehavior = self.MouseBehavior
+		end
+		
+		self.MouseBehavior = value
+		UserInputService.MouseBehavior = value
+		self._LastMouseBehaviorOverride = value
+	end
+	
+	function InputHandler:RestoreMouseBehavior()
+		if self.MouseBehavior == self._LastMouseBehaviorOverride then
+			local newBehavior = self._SavedMouseBehavior
+			self.MouseBehavior = newBehavior
+			UserInputService.MouseBehavior = newBehavior
+		end
+		self._LastMouseBehaviorOverride = nil
+	end
+	
 end
 
-local inputHandler = InputHandler.new()
+inputHandler = InputHandler.new()
 
 local PlayerModule = {} do
 	PlayerModule.__index = PlayerModule
@@ -3886,6 +3888,10 @@ local UserGameSettingsHandler = {} do
 		self.GameSettingsObject:SetGamepadCameraSensitivityVisible()
 	end
 	
+	function UserGameSettingsHandler:GetCameraYInvertValue()
+		return self.GameSettingsObject:GetCameraYInvertValue()
+	end
+	
 	function UserGameSettingsHandler:SetRotationTypeOverride(value: Enum.RotationType)
 		if self.RotationType ~= self._LastRotationTypeOverride then
 			self._SavedRotationType = self.RotationType
@@ -3897,16 +3903,14 @@ local UserGameSettingsHandler = {} do
 	end
 	
 	function UserGameSettingsHandler:RestoreRotationType()
-		if self.RotationType == self._LastRotationType then
-			self.RotationType = self._SavedRotationType
-			self.GameSettingsObject.RotationType = self.RotationType
+		if self.RotationType == self._LastRotationTypeOverride then
+			local newRotation = self._SavedRotationType
+			self.RotationType = newRotation
+			self.GameSettingsObject.RotationType = newRotation
 		end
 		self._LastRotationTypeOverride = nil
 	end
 	
-	function UserGameSettingsHandler:GetCameraYInvertValue()
-		return self.GameSettingsObject:GetCameraYInvertValue()
-	end
 end
 
 userGameSettingsHandler = UserGameSettingsHandler.new()
