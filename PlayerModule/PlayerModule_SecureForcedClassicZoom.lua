@@ -711,7 +711,12 @@ local zoomController do
 	zoomController = ZoomController.new()
 end
 
+local cameraInput
+
+local dynamicThumbstickFrame
+
 local CameraInput = {} do
+	CameraInput.__index = CameraInput
 	
 	local CAMERA_INPUT_PRIORITY = Enum.ContextActionPriority.Default.Value
 	local MB_TAP_LENGTH = 0.3 -- (s) length of time for a short mouse button tap to be registered
@@ -768,33 +773,22 @@ local CameraInput = {} do
 	end
 	
 	local function isInDynamicThumbstickArea(pos: Vector3): boolean
-		local playerGui = localPlayerD.PlayerGui
-		local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
-		local touchFrame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
-		local thumbstickFrame = touchFrame and touchFrame:FindFirstChild("DynamicThumbstickFrame")
-		
-		if not thumbstickFrame then
+		if not dynamicThumbstickFrame then
 			return false
 		end
 		
-		if not touchGui.Enabled then
+		if not controlModule.touchGui.Enabled then
 			return false
 		end
 		
-		local posTopLeft = thumbstickFrame.AbsolutePosition
-		local posBottomRight = posTopLeft + thumbstickFrame.AbsoluteSize
+		local posTopLeft = dynamicThumbstickFrame.AbsolutePosition
+		local posBottomRight = posTopLeft + dynamicThumbstickFrame.AbsoluteSize
 		
-		return
-			pos.X >= posTopLeft.X and
-			pos.Y >= posTopLeft.Y and
-			pos.X <= posBottomRight.X and
-			pos.Y <= posBottomRight.Y
+		return pos.X >= posTopLeft.X
+			and pos.Y >= posTopLeft.Y
+			and pos.X <= posBottomRight.X
+			and pos.Y <= posBottomRight.Y
 	end
-	
-	local worldDt = 1 / 60
-	RunService.Stepped:Connect(function(_, _worldDt)
-		worldDt = _worldDt
-	end)
 	
 	
 	local connectionList = {}
@@ -835,71 +829,9 @@ local CameraInput = {} do
 		Pinch = 0,
 	}
 	
-	local gamepadZoomPressBindable = Instance.new("BindableEvent")
-	CameraInput.gamepadZoomPress = gamepadZoomPressBindable.Event
-	
-	function CameraInput.getRotation(disableKeyboardRotation: boolean?): Vector2
-		local inversionVector = Vector2.new(1, UserGameSettings:GetCameraYInvertValue())
-		
-		-- keyboard input is non-coalesced, so must account for time delta
-		local kKeyboard = Vector2.new(keyboardState.Right - keyboardState.Left, 0)*worldDt
-		local kGamepad = gamepadState.Thumbstick2
-		local kMouse = mouseState.Movement
-		local kPointerAction = mouseState.Pan
-		local kTouch = adjustTouchPitchSensitivity(touchState.Move)
-		
-		if disableKeyboardRotation then
-			kKeyboard = Vector2.zero
-		end
-		
-		local result =
-			kKeyboard * ROTATION_SPEED_KEYS +
-			kGamepad * ROTATION_SPEED_GAMEPAD +
-			kMouse * ROTATION_SPEED_MOUSE +
-			kPointerAction * ROTATION_SPEED_POINTERACTION +
-			kTouch * ROTATION_SPEED_TOUCH
-		
-		return result*inversionVector
-	end
-	
-	function CameraInput.getZoomDelta(): number
-		local kKeyboard = keyboardState.O - keyboardState.I
-		local kMouse = -mouseState.Wheel + mouseState.Pinch
-		local kTouch = -touchState.Pinch
-		return kKeyboard * ZOOM_SPEED_KEYS
-			+ kMouse * ZOOM_SPEED_MOUSE
-			+ kTouch * ZOOM_SPEED_TOUCH
-	end
-	
-	local function thumbstick(action, state, input)
-		local position = input.Position
-		
-		gamepadState[input.KeyCode.Name] = Vector2.new(
-			thumbstickCurve(position.X),
-			-thumbstickCurve(position.Y)
-		)
-		
-		return Enum.ContextActionResult.Pass
-	end
-	
 	local function mouseMovement(input)
 		local delta = input.Delta
 		mouseState.Movement = Vector2.new(delta.X, delta.Y)
-	end
-	
-	local function mouseWheel(action, state, input)
-		mouseState.Wheel = input.Position.Z
-		return Enum.ContextActionResult.Pass
-	end
-	
-	local function keypress(action, state, input)
-		keyboardState[input.KeyCode.Name] = state == Enum.UserInputState.Begin and 1 or 0
-	end
-	
-	local function gamepadZoomPress(action, state, input)
-		if state == Enum.UserInputState.Begin then
-			gamepadZoomPressBindable:Fire()
-		end
 	end
 	
 	local function resetInputDevices()
@@ -1029,97 +961,167 @@ local CameraInput = {} do
 		end
 	end
 	
-	local function inputBegan(input, sunk)
-		if input.UserInputType == Enum.UserInputType.Touch then
+	function CameraInput.new()
+		local self = setmetatable({}, CameraInput)
+		
+		local gamepadZoomPressBindable = Instance.new("BindableEvent")
+		
+		self.Enabled = true
+		self.gamepadZoomPressBindable = gamepadZoomPressBindable
+		self.gamepadZoomPress = gamepadZoomPressBindable.Event
+		self.WorldTimeDelta = 0
+		
+		self.Keypress = {
+			Enum.KeyCode.Left,
+			Enum.KeyCode.Right,
+			Enum.KeyCode.I,
+			Enum.KeyCode.O
+		}
+		
+		return self
+	end
+	
+	local function isValueInArray(value, array)
+		return table.find(array, value) ~= nil
+	end
+	
+	function CameraInput:_OnCameraKeyboardPress(state, input)
+		if not isValueInArray(input.KeyCode, self.Keypress) then return end
+		keyboardState[input.KeyCode.Name] = state == Enum.UserInputState.Begin and 1 or 0
+	end
+	
+	local function thumbstick(input)
+		local position = input.Position
+		
+		gamepadState[input.KeyCode.Name] = Vector2.new(
+			thumbstickCurve(position.X),
+			-thumbstickCurve(position.Y)
+		)
+	end
+	
+	function CameraInput:OnInputBegan(input, sunk)
+		if not self.Enabled then return end
+		
+		local inputType = input.UserInputType
+		
+		if inputType == Enum.UserInputType.Touch then
 			touchBegan(input, sunk)
-			
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 and not sunk then
+		elseif inputType == Enum.UserInputType.MouseButton2 and not sunk then
 			incPanInputCount()
+		elseif inputType == Enum.UserInputType.Keyboard then
+			self:_OnCameraKeyboardPress(Enum.UserInputState.Begin, input)
+		else
+			local keyCode = input.KeyCode
+			if keyCode == Enum.KeyCode.Thumbstick2 then
+				thumbstick(input)
+			elseif keyCode == Enum.KeyCode.ButtonR3 then
+				cameraInput.gamepadZoomPressBindable:Fire()
+			end
 		end
 	end
 	
-	local function inputChanged(input, sunk)
-		if input.UserInputType == Enum.UserInputType.Touch then
+	function CameraInput:OnInputChanged(input, sunk)
+		if not self.Enabled then return end
+		
+		local inputType = input.UserInputType
+		
+		if inputType == Enum.UserInputType.Touch then
 			touchChanged(input, sunk)
-			
-		elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+		elseif inputType == Enum.UserInputType.MouseMovement then
 			mouseMovement(input)
+		elseif inputType == Enum.UserInputType.Keyboard then
+			self:_OnCameraKeyboardPress(Enum.UserInputState.Change, input)
+		else
+			local keyCode = input.KeyCode
+			if keyCode == Enum.KeyCode.Thumbstick2 then
+				thumbstick(input)
+			end
 		end
 	end
 	
-	local function inputEnded(input, sunk)
-		if input.UserInputType == Enum.UserInputType.Touch then
+	function CameraInput:OnInputEnded(input, sunk)
+		if not self.Enabled then return end
+		
+		local inputType = input.UserInputType
+		
+		if inputType == Enum.UserInputType.Touch then
 			touchEnded(input, sunk)
-			
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+		elseif inputType == Enum.UserInputType.MouseButton2 then
 			decPanInputCount()
+		elseif inputType == Enum.UserInputType.Keyboard then
+			self:_OnCameraKeyboardPress(Enum.UserInputState.End, input)
+		else
+			local keyCode = input.KeyCode
+			if keyCode == Enum.KeyCode.Thumbstick2 then
+				thumbstick(input)
+			end
 		end
+	end
+	
+	function CameraInput:OnStepped(_, dt)
+		self.WorldTimeDelta = dt
+	end
+	
+	function CameraInput:GetRotation(disableKeyboardRotation: boolean?): Vector2
+		local inversionVector = Vector2.new(1, UserGameSettings:GetCameraYInvertValue())
+		
+		-- keyboard input is non-coalesced, so must account for time delta
+		local kKeyboard = Vector2.new(keyboardState.Right - keyboardState.Left, 0) * self.WorldTimeDelta
+		local kGamepad = gamepadState.Thumbstick2
+		local kMouse = mouseState.Movement
+		local kPointerAction = mouseState.Pan
+		local kTouch = adjustTouchPitchSensitivity(touchState.Move)
+		
+		if disableKeyboardRotation then
+			kKeyboard = Vector2.zero
+		end
+		
+		local result = kKeyboard * ROTATION_SPEED_KEYS
+			+ kGamepad * ROTATION_SPEED_GAMEPAD
+			+ kMouse * ROTATION_SPEED_MOUSE
+			+ kPointerAction * ROTATION_SPEED_POINTERACTION
+			+ kTouch * ROTATION_SPEED_TOUCH
+		
+		return result*inversionVector
+	end
+	
+	function CameraInput:GetZoomDelta(): number
+		local kKeyboard = keyboardState.O - keyboardState.I
+		local kMouse = -mouseState.Wheel + mouseState.Pinch
+		local kTouch = -touchState.Pinch
+		return kKeyboard * ZOOM_SPEED_KEYS
+			+ kMouse * ZOOM_SPEED_MOUSE
+			+ kTouch * ZOOM_SPEED_TOUCH
 	end
 	
 	local inputEnabled = false
 	
-	function CameraInput.setInputEnabled(_inputEnabled)
-		if inputEnabled == _inputEnabled then
-			return
-		end
+	function CameraInput:SetInputEnabled(_inputEnabled)
+		if inputEnabled == _inputEnabled then return end
 		inputEnabled = _inputEnabled
 		
 		resetInputDevices()
 		resetTouchState()
 		
+		self.Enabled = inputEnabled
+		
 		if inputEnabled then -- enable
-			ContextActionService:BindActionAtPriority(
-				"RbxCameraThumbstick",
-				thumbstick,
-				false,
-				CAMERA_INPUT_PRIORITY,
-				Enum.KeyCode.Thumbstick2
-			)
-			
-			ContextActionService:BindActionAtPriority(
-				"RbxCameraKeypress",
-				keypress,
-				false,
-				CAMERA_INPUT_PRIORITY,
-				Enum.KeyCode.Left,
-				Enum.KeyCode.Right,
-				Enum.KeyCode.I,
-				Enum.KeyCode.O
-			)
-			
-			ContextActionService:BindAction(
-				"RbxCameraGamepadZoom",
-				gamepadZoomPress,
-				false,
-				Enum.KeyCode.ButtonR3
-			)
-			
-			table.insert(connectionList, UserInputService.InputBegan:Connect(inputBegan))
-			table.insert(connectionList, UserInputService.InputChanged:Connect(inputChanged))
-			table.insert(connectionList, UserInputService.InputEnded:Connect(inputEnded))
 			table.insert(connectionList, UserInputService.PointerAction:Connect(pointerAction))
 			table.insert(connectionList, GuiService.MenuOpened:Connect(resetTouchState))
-			
-		else -- disable
-			ContextActionService:UnbindAction("RbxCameraThumbstick")
-			ContextActionService:UnbindAction("RbxCameraMouseMove")
-			ContextActionService:UnbindAction("RbxCameraMouseWheel")
-			ContextActionService:UnbindAction("RbxCameraKeypress")
-			
-			ContextActionService:UnbindAction("RbxCameraGamepadZoom")
-			
+		else
 			for _, conn in next, connectionList do
 				conn:Disconnect()
 			end
+			
 			table.clear(connectionList)
 		end
 	end
 	
-	function CameraInput.getInputEnabled()
+	function CameraInput:GetInputEnabled()
 		return inputEnabled
 	end
 	
-	function CameraInput.resetInputForFrameEnd()
+	function CameraInput:ResetInputForFrameEnd()
 		mouseState.Movement = Vector2.zero
 		touchState.Move = Vector2.zero
 		touchState.Pinch = 0
@@ -1129,10 +1131,18 @@ local CameraInput = {} do
 		mouseState.Pinch = 0 -- PointerAction
 	end
 	
-	UserInputService.WindowFocused:Connect(resetInputDevices)
-	UserInputService.WindowFocusReleased:Connect(resetInputDevices)
+	function CameraInput:OnWindowFocused()
+		resetInputDevices()
+	end
+	
+	function CameraInput:OnWindowFocusReleased()
+		resetInputDevices()
+	end
+	
 end
 
+cameraInput = CameraInput.new()
+local mouseLockController
 
 local MouseLockController = {} do
 	MouseLockController.__index = MouseLockController
@@ -1140,8 +1150,11 @@ local MouseLockController = {} do
 	function MouseLockController.new(cameraModule)
 		local self = setmetatable({}, MouseLockController)
 		
+		mouseLockController = self
+		
 		self.IsEnabled = true
 		self.IsMouseLocked = false
+		self.IsAvailable = UserInputService.TouchEnabled == false
 		
 		self.MouseLockOffset = Vector3.new(1.75, 0, 0)
 		self.BoundKeys = {
@@ -1155,21 +1168,19 @@ local MouseLockController = {} do
 		self.LockCursorImage = "rbxasset://textures/MouseLockedCursor.png"
 		self.LastMouseIcon = nil
 		
-		if not UserInputService.TouchEnabled then
-			UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-				if gameProcessedEvent then return end
-				if not self.IsEnabled then return end
-				
-				local key = input.KeyCode
-				for _, switchKey in next, self.BoundKeys do
-					if key == switchKey then
-						self:_OnMouseLockToggled()
-					end
-				end
-			end)
-		end
-		
 		return self
+	end
+	
+	function MouseLockController:OnInputBegan(input, gameProcessedEvent)
+		if gameProcessedEvent then return end
+		if not self.IsEnabled then return end
+		
+		local key = input.KeyCode
+		for _, switchKey in next, self.BoundKeys do
+			if key == switchKey then
+				self:_OnMouseLockToggled()
+			end
+		end
 	end
 	
 	function MouseLockController:_SetMouseIconOverride()
@@ -1275,7 +1286,6 @@ local BaseCamera = {} do
 		self.gamepadZoomPressConnection = nil
 		
 		self.MouseLockController = MouseLockController.new(self)
-		self.mouseLockOffset = Vector3.zero
 		
 		-- Initialization things used to always execute at game load time, but now these camera modules are instantiated
 		-- when needed, so the code here may run well after the start of the game
@@ -1297,7 +1307,7 @@ local BaseCamera = {} do
 	
 	function BaseCamera:StepZoom()
 		local zoom: number = self.currentSubjectDistance
-		local zoomDelta: number = CameraInput.getZoomDelta()
+		local zoomDelta: number = cameraInput:GetZoomDelta()
 		
 		if math.abs(zoomDelta) > 0 then
 			local newZoom
@@ -1417,13 +1427,13 @@ local BaseCamera = {} do
 		if self.enabled ~= enable then
 			self.enabled = enable
 			if self.enabled then
-				CameraInput.setInputEnabled(true)
+				cameraInput:SetInputEnabled(true)
 				
-				self.gamepadZoomPressConnection = CameraInput.gamepadZoomPress:Connect(function()
+				self.gamepadZoomPressConnection = cameraInput.gamepadZoomPress:Connect(function()
 					self:GamepadZoomPress()
 				end)
 			else
-				CameraInput.setInputEnabled(false)
+				cameraInput:SetInputEnabled(false)
 				
 				if self.gamepadZoomPressConnection then
 					self.gamepadZoomPressConnection:Disconnect()
@@ -1728,12 +1738,12 @@ local ClassicCamera = setmetatable({}, BaseCamera) do
 		local cameraSubject = camera.CameraSubject
 		local isClimbing = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Climbing
 		
-		local rotateInput = CameraInput.getRotation()
+		local rotateInput = cameraInput:GetRotation()
 		
 		self:StepZoom()
 		
 		-- Reset tween speed if user is panning
-		if CameraInput.getRotation() ~= Vector2.zero then
+		if cameraInput:GetRotation() ~= Vector2.zero then
 			tweenSpeed = 0
 			self.lastUserPanCamera = tick()
 		end
@@ -2064,8 +2074,8 @@ local CameraModule = {} do
 		-- Update to character local transparency as needed based on camera-to-subject distance
 		self.TransparencyController:Update(dt)
 		
-		if CameraInput.getInputEnabled() then
-			CameraInput.resetInputForFrameEnd()
+		if cameraInput:GetInputEnabled() then
+			cameraInput:ResetInputForFrameEnd()
 		end
 	end
 	
@@ -2191,6 +2201,8 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 			thumbstickFrame.Active = false
 			self.thumbstickFrame = thumbstickFrame
+			dynamicThumbstickFrame = thumbstickFrame
+			
 			self:_LayoutThumbstickFrame(false)
 			
 			local startImage = Instance.new("ImageLabel")
@@ -2243,35 +2255,6 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			self.startImageFadeTween = nil
 			self.endImageFadeTween = nil
 			self.middleImageFadeTweens = {}
-			
-			RunService.RenderStepped:Connect(function()
-				if self.tweenInAlphaStart ~= nil then
-					local delta = tick() - self.tweenInAlphaStart
-					
-					local fadeInTime = (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-					
-					self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
-						* math.min(delta / fadeInTime, 1)
-					
-					if delta > fadeInTime then
-						self.tweenOutAlphaStart = tick()
-						self.tweenInAlphaStart = nil
-					end
-					
-				elseif self.tweenOutAlphaStart ~= nil then
-					local delta = tick() - self.tweenOutAlphaStart
-					
-					local fadeOutTime = (self.fadeInAndOutHalfDuration * 2)
-						- (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
-					
-					self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
-						+ FADE_IN_OUT_MAX_ALPHA * math.min(delta / fadeOutTime, 1)
-					
-					if delta > fadeOutTime  then
-						self.tweenOutAlphaStart = nil
-					end
-				end
-			end)
 			
 			UserInputService.TouchEnded:Connect(function(inputObject: InputObject)
 				if inputObject == self.moveTouchObject then
@@ -2328,6 +2311,35 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		end
 		
 		return self
+	end
+	
+	function DynamicThumbstick:OnRenderStepped()
+		if self.tweenInAlphaStart ~= nil then
+			local delta = tick() - self.tweenInAlphaStart
+			
+			local fadeInTime = (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
+			
+			self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+				* math.min(delta / fadeInTime, 1)
+			
+			if delta > fadeInTime then
+				self.tweenOutAlphaStart = tick()
+				self.tweenInAlphaStart = nil
+			end
+			
+		elseif self.tweenOutAlphaStart ~= nil then
+			local delta = tick() - self.tweenOutAlphaStart
+			
+			local fadeOutTime = (self.fadeInAndOutHalfDuration * 2)
+			- (self.fadeInAndOutHalfDuration * 2 * self.fadeInAndOutBalance)
+			
+			self.thumbstickFrame.BackgroundTransparency = 1 - FADE_IN_OUT_MAX_ALPHA
+				+ FADE_IN_OUT_MAX_ALPHA * math.min(delta / fadeOutTime, 1)
+			
+			if delta > fadeOutTime  then
+				self.tweenOutAlphaStart = nil
+			end
+		end
 	end
 	
 	function DynamicThumbstick:_LayoutThumbstickFrame(portraitMode)
@@ -3799,6 +3811,60 @@ local ControlModule = {} do
 end
 
 
+local InputHandler = {} do
+	InputHandler.__index = InputHandler
+	
+	function InputHandler.new()
+		local self = setmetatable({}, InputHandler)
+		
+		UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+			self:OnInputBegan(input, gameProcessedEvent)
+		end)
+		
+		UserInputService.InputChanged:Connect(function(input, gameProcessedEvent)
+			self:OnInputChanged(input, gameProcessedEvent)
+		end)
+		
+		UserInputService.InputEnded:Connect(function(input, gameProcessedEvent)
+			self:OnInputEnded(input, gameProcessedEvent)
+		end)
+		
+		UserInputService.WindowFocused:Connect(function()
+			self:OnWindowFocused()
+		end)
+		
+		UserInputService.WindowFocusReleased:Connect(function()
+			self:OnWindowFocusReleased()
+		end)
+		
+		return self
+	end
+	
+	function InputHandler:OnInputBegan(input, gameProcessedEvent)
+		cameraInput:OnInputBegan(input, gameProcessedEvent)
+		if mouseLockController.IsAvailable then
+			mouseLockController:OnInputBegan(input, gameProcessedEvent)
+		end
+	end
+	
+	function InputHandler:OnInputChanged(input, gameProcessedEvent)
+		cameraInput:OnInputChanged(input, gameProcessedEvent)
+	end
+	
+	function InputHandler:OnInputEnded(input, gameProcessedEvent)
+		cameraInput:OnInputEnded(input, gameProcessedEvent)
+	end
+	
+	function InputHandler:OnWindowFocused()
+		cameraInput:OnWindowFocused()
+	end
+	
+	function InputHandler:OnWindowFocusReleased()
+		cameraInput:OnWindowFocusReleased()
+	end
+end
+
+local inputHandler = InputHandler.new()
 
 local PlayerModule = {} do
 	PlayerModule.__index = PlayerModule
@@ -3815,11 +3881,29 @@ local PlayerModule = {} do
 		RunService.RenderStepped:Connect(function(dt)
 			self.Camera:Update(dt)
 			self.Control:OnRenderStepped(dt)
+			if dynamicThumbstick and dynamicThumbstick.enabled then
+				dynamicThumbstick:OnRenderStepped()
+			end
+		end)
+		
+		RunService.Stepped:Connect(function(worldTime, dt)
+			cameraInput:OnStepped(worldTime, dt)
 		end)
 		
 		return self
 	end
 	
 end
+
+--[[
+spawn(function()
+	wait(5)
+	warn("asdaw")
+	cameraInput:SetInputEnabled(false)
+	wait(1)
+	warn("assasdasdaw")
+	cameraInput:SetInputEnabled(true)
+end)
+]]
 
 return PlayerModule.new()
