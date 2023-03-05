@@ -11,6 +11,7 @@ local UserGameSettings = UserSettings():GetService("UserGameSettings")
 
 local localPlayer = Players.LocalPlayer
 
+local dynamicThumbstick
 local cameraModule
 local controlModule
 
@@ -212,6 +213,9 @@ local cameraHandler do
 		
 		function CameraHandler:OnViewportSizeChanged()
 			popper:UpdateProjection(self.FieldOfView, self.ViewportSize)
+			if dynamicThumbstick then
+				dynamicThumbstick:OnViewportSizeChanged(self.ViewportSize)
+			end
 		end
 		
 		function CameraHandler:OnNearPlaneZChanged()
@@ -2133,6 +2137,8 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 	function DynamicThumbstick.new(_, touchControlFrame)
 		local self = setmetatable(BaseCharacterController.new(), DynamicThumbstick)
 		
+		dynamicThumbstick = self
+		
 		self.moveTouchObject = nil
 		self.moveTouchLockedIn = false
 		self.moveTouchFirstChanged = false
@@ -2177,16 +2183,6 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 				self.radiusOfMaxSpeed *= 2
 			end
 			
-			local function layoutThumbstickFrame(portraitMode)
-				if portraitMode then
-					self.thumbstickFrame.Size = UDim2.new(1, 0, 0.4, 0)
-					self.thumbstickFrame.Position = UDim2.new(0, 0, 0.6, 0)
-				else
-					self.thumbstickFrame.Size = UDim2.new(0.4, 0, 2/3, 0)
-					self.thumbstickFrame.Position = UDim2.new(0, 0, 1/3, 0)
-				end
-			end
-			
 			local thumbstickFrame = Instance.new("Frame")
 			thumbstickFrame.BorderSizePixel = 0
 			thumbstickFrame.Name = "DynamicThumbstickFrame"
@@ -2195,7 +2191,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 			thumbstickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 			thumbstickFrame.Active = false
 			self.thumbstickFrame = thumbstickFrame
-			layoutThumbstickFrame(false)
+			self:_LayoutThumbstickFrame(false)
 			
 			local startImage = Instance.new("ImageLabel")
 			startImage.Name = "ThumbstickStart"
@@ -2241,16 +2237,7 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 				self.middleImages[i] = image
 			end
 			
-			local camera = cameraHandler.CameraObject
-			local function onViewportSizeChanged()
-				local size = camera.ViewportSize
-				local portraitMode = size.X < size.Y
-				layoutThumbstickFrame(portraitMode)
-			end
-			
-			camera:GetPropertyChangedSignal("ViewportSize"):Connect(onViewportSizeChanged)
-			onViewportSizeChanged()
-			
+			self:OnViewportSizeChanged(cameraHandler.ViewportSize)
 			self.moveTouchStartPosition = nil
 			
 			self.startImageFadeTween = nil
@@ -2341,6 +2328,21 @@ local DynamicThumbstick = setmetatable({}, BaseCharacterController) do
 		end
 		
 		return self
+	end
+	
+	function DynamicThumbstick:_LayoutThumbstickFrame(portraitMode)
+		if portraitMode then
+			self.thumbstickFrame.Size = UDim2.new(1, 0, 0.4, 0)
+			self.thumbstickFrame.Position = UDim2.new(0, 0, 0.6, 0)
+		else
+			self.thumbstickFrame.Size = UDim2.new(0.4, 0, 2/3, 0)
+			self.thumbstickFrame.Position = UDim2.new(0, 0, 1/3, 0)
+		end
+	end
+	
+	function DynamicThumbstick:OnViewportSizeChanged(viewportSize)
+		local portraitMode = viewportSize.X < viewportSize.Y
+		self:_LayoutThumbstickFrame(portraitMode)
 	end
 	
 	-- Note: Overrides base class GetIsJumping with get-and-clear behavior to do a single jump
